@@ -123,4 +123,14 @@ The end state.
 - **Deploy safety** — rollback strategy, environment gating, and what never deploys without a human.
 - **Cost control** — budgets/caps per task and per project; alerting on runaway loops.
 - **Plane API maturity** — relation/dependency endpoints lag the cloud docs on self-hosted; verify
-  against the deployed version (Phase 5).
+  against the deployed version (Phase 5). Also: the MVP's Plane client uses documented-but-unverified
+  JSON key names (`state`, `comment_html`, `description_html`, `next_cursor`, `sequence_id`) — smoke-test
+  reads with `--print-states` and confirm the write shape against the live instance before relying on it.
+- **Synchronous dispatch (Phase 2 blocker)** — the MVP runs each session on the polling thread, so it
+  is safe only at concurrency=1. Raising the cap to 5 requires making dispatch non-blocking (thread
+  pool/executor) AND fixing the `poll_once` check-then-act TOCTOU; the `Ownership` set generalizes but
+  the dispatch path does not. (Final review I2.)
+- **Soft guardrail wall** — `bypassPermissions` inside a git worktree is NOT a real sandbox (shared
+  `.git`), and the `claude-settings.json` deny rules are bypassable (`--force-with-lease`, glob gaps,
+  env indirection). Acceptable only for the disposable sandbox; real targets need container-level
+  isolation. (Final review I3.)
