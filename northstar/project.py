@@ -1,12 +1,15 @@
 from __future__ import annotations
 from pathlib import Path
 import json
-import os
 import shutil
 import stat
+from dataclasses import dataclass
 
+import yaml
+from orchestrator.plane import PlaneClient
 from northstar.proc import run
 from northstar.assets import templates_dir
+from northstar import paths
 
 
 def detect_build_commands(repo_dir: Path) -> dict:
@@ -65,3 +68,66 @@ def install_guardrails(repo_dir: Path, project_name: str,
     # CLAUDE.md with the project name substituted
     tmpl = (tdir / "CLAUDE.md.tmpl").read_text()
     (repo_dir / "CLAUDE.md").write_text(tmpl.replace("{{PROJECT_NAME}}", project_name))
+
+
+@dataclass
+class ProjectInputs:
+    name: str
+    plane_base_url: str
+    plane_api_key: str
+    plane_workspace_slug: str
+    plane_project_id: str
+    github_repo: str
+    repo_dir: Path
+    lint_cmd: str
+    build_cmd: str
+    test_cmd: str
+    claude_model: str = "claude-opus-4-8"
+    poll_interval_seconds: int = 30
+    max_concurrency: int = 1
+
+
+def discover_state_ids(inp: "ProjectInputs", client=None) -> dict:
+    client = client or PlaneClient(inp.plane_base_url, inp.plane_api_key,
+                                   inp.plane_workspace_slug, inp.plane_project_id)
+    return client.list_states()
+
+
+def write_project_config(inp: "ProjectInputs", state_ids: dict, mcp_path: Path) -> Path:
+    cfg = {
+        "plane_base_url": inp.plane_base_url,
+        "plane_api_key": inp.plane_api_key,
+        "plane_workspace_slug": inp.plane_workspace_slug,
+        "plane_project_id": inp.plane_project_id,
+        "github_repo": inp.github_repo,
+        "repo_dir": str(inp.repo_dir),
+        "worktrees_root": str(paths.home() / "worktrees" / inp.name),
+        "poll_interval_seconds": inp.poll_interval_seconds,
+        "claude_binary": "claude",
+        "claude_model": inp.claude_model,
+        "mcp_config_path": str(mcp_path),
+        "templates_dir": str(templates_dir()),
+        "max_concurrency": inp.max_concurrency,
+        "state_ids": state_ids,
+    }
+    out = paths.project_config_path(inp.name)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(yaml.safe_dump(cfg, sort_keys=True))
+    return out
+
+
+def add_project(inp: "ProjectInputs", *, runner=run,
+                create_if_missing=False, client=None) -> dict:
+    if not repo_exists(inp.github_repo, runner=runner):
+        if not create_if_missing:
+            raise RuntimeError(
+                f"repo {inp.github_repo} not found; pass create_if_missing=True to create it")
+        create_repo(inp.github_repo, inp.repo_dir, runner=runner)
+    install_guardrails(inp.repo_dir, inp.name, inp.lint_cmd, inp.build_cmd, inp.test_cmd)
+    state_ids = discover_state_ids(inp, client=client)
+    mcp_path = paths.home() / "plane-mcp.json"
+    write_project_config(inp, state_ids, mcp_path)
+    meta = {"github_repo": inp.github_repo, "repo_dir": str(inp.repo_dir),
+            "plane_project_id": inp.plane_project_id}
+    paths.register_project(inp.name, meta)
+    return meta
