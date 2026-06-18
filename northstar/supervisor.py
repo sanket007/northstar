@@ -1,6 +1,7 @@
 from __future__ import annotations
 from pathlib import Path
 import shlex
+import sys
 
 from northstar.proc import run
 from northstar import paths
@@ -19,7 +20,7 @@ def start(project: str, repo_dir: Path, plane_env: dict, runner=run) -> None:
         return
     cfg = paths.project_config_path(project)
     envstr = " ".join(f"{k}={shlex.quote(str(v))}" for k, v in plane_env.items())
-    inner = f"env {envstr} python -m orchestrator --config {shlex.quote(str(cfg))}"
+    inner = f"env {envstr} {shlex.quote(sys.executable)} -m orchestrator --config {shlex.quote(str(cfg))}"
     runner(f"tmux new-session -d -s {session_name(project)} -c {shlex.quote(str(repo_dir))} "
            f"{shlex.quote(inner)}", shell=True)
     log = paths.log_path(project)

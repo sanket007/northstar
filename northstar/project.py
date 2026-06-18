@@ -118,11 +118,16 @@ def write_project_config(inp: "ProjectInputs", state_ids: dict, mcp_path: Path) 
 
 def add_project(inp: "ProjectInputs", *, runner=run,
                 create_if_missing=False, client=None) -> dict:
+    if not runner(["gh", "auth", "status"]).ok:
+        raise RuntimeError("GitHub not reachable — run: gh auth login")
     if not repo_exists(inp.github_repo, runner=runner):
         if not create_if_missing:
             raise RuntimeError(
                 f"repo {inp.github_repo} not found; pass create_if_missing=True to create it")
         create_repo(inp.github_repo, inp.repo_dir, runner=runner)
+    else:
+        if not Path(inp.repo_dir).exists():
+            runner(["gh", "repo", "clone", inp.github_repo, str(inp.repo_dir)])
     install_guardrails(inp.repo_dir, inp.name, inp.lint_cmd, inp.build_cmd, inp.test_cmd)
     state_ids = discover_state_ids(inp, client=client)
     mcp_path = paths.home() / "plane-mcp.json"

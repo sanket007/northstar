@@ -63,6 +63,46 @@ def test_repo_exists_uses_gh(monkeypatch):
     assert "gh repo view o/acme" in calls[0]
 
 
+def test_add_project_aborts_when_gh_unauthenticated(tmp_path, monkeypatch):
+    monkeypatch.setenv("NORTHSTAR_HOME", str(tmp_path / ".northstar"))
+    monkeypatch.delenv("NORTHSTAR_ASSETS_DIR", raising=False)
+    import northstar.paths as paths; importlib.reload(paths)
+    from northstar import project
+    import pytest
+    def runner(cmd, **kw):
+        if "auth" in cmd:
+            return CommandResult(1, "", "")
+        return CommandResult(0, "", "")
+    inp = _inputs(tmp_path)
+    with pytest.raises(RuntimeError, match="GitHub not reachable"):
+        project.add_project(inp, runner=runner, client=FakePlane())
+
+
+def test_add_project_clones_existing_repo_when_not_local(tmp_path, monkeypatch):
+    monkeypatch.setenv("NORTHSTAR_HOME", str(tmp_path / ".northstar"))
+    monkeypatch.delenv("NORTHSTAR_ASSETS_DIR", raising=False)
+    import northstar.paths as paths; importlib.reload(paths)
+    from northstar import project
+    # repo_dir that does NOT exist yet
+    repo_dir = tmp_path / "nonexistent_repo"
+    inp = project.ProjectInputs(
+        name="acme", plane_base_url="https://plane.x", plane_api_key="k",
+        plane_workspace_slug="w", plane_project_id="p", github_repo="o/acme",
+        repo_dir=repo_dir, lint_cmd="make lint", build_cmd="make build", test_cmd="make test")
+    recorded = []
+    def runner(cmd, **kw):
+        recorded.append(list(cmd))
+        # After clone is called, create the repo dir so install_guardrails succeeds
+        if cmd[0] == "gh" and "clone" in cmd:
+            repo_dir.mkdir(parents=True, exist_ok=True)
+            (repo_dir / "docs").mkdir(parents=True, exist_ok=True)
+        return CommandResult(0, "", "")
+    project.add_project(inp, runner=runner, client=FakePlane())
+    clone_calls = [c for c in recorded if len(c) >= 2 and c[0] == "gh" and "clone" in c]
+    assert clone_calls, "expected a gh repo clone command to be issued"
+    assert any("o/acme" in c for c in clone_calls[0])
+
+
 def test_install_guardrails_writes_settings_hook_and_claude(tmp_path, monkeypatch):
     # point assets at the real repo templates
     monkeypatch.delenv("NORTHSTAR_ASSETS_DIR", raising=False)

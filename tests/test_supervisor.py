@@ -1,4 +1,5 @@
 import importlib
+import sys
 from northstar.proc import CommandResult
 
 
@@ -23,7 +24,8 @@ def test_start_builds_tmux_new_session_with_env_and_config(tmp_path, monkeypatch
                                 "PLANE_WORKSPACE_SLUG": "w"}, runner=runner)
     joined = "\n".join(calls)
     assert "tmux new-session -d -s ns-acme" in joined
-    assert "python -m orchestrator --config" in joined
+    assert "-m orchestrator --config" in joined
+    assert sys.executable in joined
     assert "PLANE_API_KEY=k" in joined
     assert "pipe-pane" in joined
 
