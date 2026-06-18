@@ -12,6 +12,8 @@ claude_model: claude-opus-4-8
 mcp_config_path: /abs/path/to/plane-mcp.json
 templates_dir: /abs/path/to/agentic-dev-framework/templates
 max_concurrency: 1
+session_timeout_seconds: 1800
+max_turns: 40
 state_ids:
   "Ready to Dev": REPLACE_ME
   "In Progress": REPLACE_ME

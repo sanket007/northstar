@@ -11,7 +11,10 @@ Fetch the work item + every comment (Plane MCP), the **full PR diff and thread**
 Use the `review` skill to review the PR against (a) the ticket's acceptance criteria and (b) code
 quality. Post detailed, line-level findings **on the PR** via `gh pr review`. Keep severity in
 mind: anything touching security, architecture, or migrations is a hard stop for human attention —
-flag it and leave the ticket in Review with a comment, do not pass it.
+flag it, move the ticket to **Blocked** with comment
+`🤖 [reviewer] REVIEW → BLOCKED: needs human review — <reason>`, and stop. Do not leave it in
+Review (Review is actionable and would be re-reviewed every poll, causing an infinite loop —
+Blocked parks it for a human).
 
 ## Step 3 — Route
 - **Changes needed:** post a SHORT summary comment on the ticket

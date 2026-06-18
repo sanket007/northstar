@@ -1,7 +1,8 @@
 from pathlib import Path
+import subprocess
 from orchestrator.config import Config
 from orchestrator.launcher import (
-    build_claude_command, parse_stream_json, SessionResult, role_doc_path,
+    build_claude_command, parse_stream_json, run_session, SessionResult, role_doc_path,
 )
 
 
@@ -27,6 +28,9 @@ def test_build_command_includes_required_flags(tmp_path):
     assert "ROLE TEXT" in cmd
     # the prompt names the ticket id
     assert any("i1" in part for part in cmd)
+    # max-turns cap must be present
+    assert "--max-turns" in cmd
+    assert str(cfg.max_turns) in cmd
 
 
 def test_role_doc_path(tmp_path):
@@ -54,3 +58,30 @@ def test_parse_stream_json_no_result_is_failure():
     res = parse_stream_json(['{"type":"assistant","message":{}}'])
     assert res.ok is False
     assert "no result" in (res.error or "").lower()
+
+
+def test_run_session_timeout_returns_failure(tmp_path):
+    """When the subprocess times out, run_session returns SessionResult(ok=False, error='session timeout')."""
+    cfg = make_cfg(tmp_path)
+    # Write a stub role doc so role_doc_path().read_text() works
+    role_doc = cfg.templates_dir
+    role_doc.mkdir(parents=True, exist_ok=True)
+    (role_doc / "builder.md").write_text("stub")
+
+    class FakeProc:
+        returncode = -9
+
+        def communicate(self, timeout=None):
+            if timeout is not None:
+                raise subprocess.TimeoutExpired(cmd=["claude"], timeout=timeout)
+            return ("", "")
+
+        def kill(self):
+            pass
+
+    def fake_runner(cmd, **kwargs):
+        return FakeProc()
+
+    result = run_session(cfg, "builder", "i1", tmp_path / "wt", runner=fake_runner)
+    assert result.ok is False
+    assert result.error == "session timeout"

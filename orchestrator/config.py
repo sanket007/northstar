@@ -26,6 +26,8 @@ class Config:
     templates_dir: Path
     state_ids: dict[str, str]
     max_concurrency: int = 1
+    session_timeout_seconds: int = 1800
+    max_turns: int = 40
 
 
 def load_config(path: Path) -> Config:
@@ -48,4 +50,6 @@ def load_config(path: Path) -> Config:
         templates_dir=Path(data["templates_dir"]),
         state_ids=dict(data["state_ids"]),
         max_concurrency=int(data.get("max_concurrency", 1)),
+        session_timeout_seconds=int(data.get("session_timeout_seconds", 1800)),
+        max_turns=int(data.get("max_turns", 40)),
     )

@@ -34,6 +34,7 @@ def build_claude_command(cfg: Config, role: str, ticket_id: str,
         "--mcp-config", str(cfg.mcp_config_path),
         "--model", cfg.claude_model,
         "--append-system-prompt", role_doc_text,
+        "--max-turns", str(cfg.max_turns),
     ]
 
 
@@ -63,9 +64,13 @@ def run_session(cfg: Config, role: str, ticket_id: str, worktree: Path,
     cmd = build_claude_command(cfg, role, ticket_id, worktree, role_doc_text)
     proc = runner(cmd, cwd=str(worktree), stdout=subprocess.PIPE,
                   stderr=subprocess.STDOUT, text=True)
-    lines = list(iter(proc.stdout.readline, "")) if proc.stdout else []
-    proc.wait()
-    result = parse_stream_json(lines)
+    try:
+        stdout, _ = proc.communicate(timeout=cfg.session_timeout_seconds)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.communicate()
+        return SessionResult(ok=False, error="session timeout")
+    result = parse_stream_json((stdout or "").splitlines())
     if proc.returncode not in (0, None) and result.ok:
         return SessionResult(ok=False, error=f"claude exited {proc.returncode}")
     return result
