@@ -33,3 +33,24 @@ def test_status_lists_registered_projects(tmp_path, monkeypatch):
     result = runner.invoke(cli.app, ["status"])
     assert result.exit_code == 0
     assert "acme" in result.stdout
+
+
+def test_project_add_new_plane_project_builds_inputs(tmp_path, monkeypatch):
+    monkeypatch.setenv("NORTHSTAR_HOME", str(tmp_path / ".northstar"))
+    import northstar.paths as paths; importlib.reload(paths)
+    import northstar.cli as cli; importlib.reload(cli)
+    captured = {}
+    monkeypatch.setattr(cli.project, "add_project",
+                        lambda inp, **kw: captured.setdefault("inp", inp) or {"github_repo": inp.github_repo})
+    result = runner.invoke(cli.app, [
+        "project", "add",
+        "--name", "acme", "--plane-base-url", "https://x", "--plane-api-key", "k",
+        "--plane-workspace-slug", "w", "--github-repo", "o/acme",
+        "--repo-dir", str(tmp_path / "repo"),
+        "--lint-cmd", "l", "--build-cmd", "b", "--test-cmd", "t",
+        "--new-plane-project", "--plane-project-name", "Acme", "--plane-identifier", "ACME",
+    ])
+    assert result.exit_code == 0
+    inp = captured["inp"]
+    assert inp.plane_new_project is True
+    assert inp.plane_project_name == "Acme" and inp.plane_identifier == "ACME"
