@@ -1,6 +1,5 @@
 from __future__ import annotations
 from dataclasses import dataclass
-import json
 import httpx
 
 
@@ -58,8 +57,7 @@ class PlaneClient:
         resp.raise_for_status()
 
     def set_state(self, issue_id: str, state_id: str) -> None:
-        resp = self._http.patch(f"{self._prefix}/work-items/{issue_id}/",
-                                content=json.dumps({"state": state_id}, separators=(", ", ": ")))
+        resp = self._http.patch(f"{self._prefix}/work-items/{issue_id}/", json={"state": state_id})
         resp.raise_for_status()
 
     @staticmethod

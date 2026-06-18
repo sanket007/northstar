@@ -55,7 +55,7 @@ def test_set_state_patches_work_item():
     make_client().set_state("i1", "s2")
     assert route.called
     sent = route.calls.last.request
-    assert b'"state": "s2"' in sent.content
+    assert b'"state":"s2"' in sent.content
 
 
 @respx.mock
