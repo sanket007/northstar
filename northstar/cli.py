@@ -79,7 +79,7 @@ def project_add(
         plane_new_project=new_plane_project, plane_project_name=plane_project_name,
         plane_identifier=plane_identifier)
     meta = project.add_project(inp, create_if_missing=create_if_missing)
-    typer.echo(f"added {name}: {meta['github_repo'] if isinstance(meta, dict) else inp.github_repo}")
+    typer.echo(f"added {name}: {meta['github_repo']}")
 
 
 def _plane_env(name: str) -> dict:

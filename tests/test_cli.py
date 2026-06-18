@@ -40,8 +40,10 @@ def test_project_add_new_plane_project_builds_inputs(tmp_path, monkeypatch):
     import northstar.paths as paths; importlib.reload(paths)
     import northstar.cli as cli; importlib.reload(cli)
     captured = {}
-    monkeypatch.setattr(cli.project, "add_project",
-                        lambda inp, **kw: captured.setdefault("inp", inp) or {"github_repo": inp.github_repo})
+    def fake_add(inp, **kw):
+        captured["inp"] = inp
+        return {"github_repo": inp.github_repo}
+    monkeypatch.setattr(cli.project, "add_project", fake_add)
     result = runner.invoke(cli.app, [
         "project", "add",
         "--name", "acme", "--plane-base-url", "https://x", "--plane-api-key", "k",
