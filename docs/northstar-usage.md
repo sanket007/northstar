@@ -4,6 +4,10 @@
 ```bash
 pipx install -e .        # or: pip install -e ".[dev]"
 ```
+> Use an **editable** install (`-e`). The CLI resolves its bundled `templates/` and
+> `plane-mcp.json` relative to the source tree; a non-editable install can't find them yet
+> (packaging them as `package-data` is a tracked follow-up). To run from elsewhere, set
+> `NORTHSTAR_ASSETS_DIR` to the repo root.
 
 ## Machine setup
 ```bash

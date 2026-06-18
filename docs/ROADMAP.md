@@ -134,3 +134,15 @@ The end state.
   `.git`), and the `claude-settings.json` deny rules are bypassable (`--force-with-lease`, glob gaps,
   env indirection). Acceptable only for the disposable sandbox; real targets need container-level
   isolation. (Final review I3.)
+
+### northstar CLI — deferred (from its final review)
+- **Asset packaging** — the CLI resolves `templates/` + `plane-mcp.json` by filesystem path, so it
+  needs an **editable** install (`-e`) or `NORTHSTAR_ASSETS_DIR`. Ship them as `package-data` /
+  `importlib.resources` for real `pipx install .`. (northstar final review M3.)
+- **Board-state validation** — `northstar project add` does not verify the Plane board actually has
+  the canonical state names; a board missing "Ready to Dev" would silently never dispatch. Warn at
+  add time. (M2.)
+- **Native-installer verification** — `init` runs caveman/grill-me installers best-effort but does
+  not re-verify their presence afterward; add a presence check + a printed one-liner on failure
+  (spec §4). grill-me's `npx skills` picker may hang non-interactively.
+- **`--seed`** — optional test-ticket seeding (needs a `create_work_item` on the Plane client).
