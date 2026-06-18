@@ -1,0 +1,65 @@
+from __future__ import annotations
+from threading import Lock
+import time
+
+from orchestrator.config import Config
+from orchestrator.state_machine import role_for_state
+
+
+class Ownership:
+    def __init__(self):
+        self._ids: set[str] = set()
+        self._lock = Lock()
+
+    def claim(self, ticket_id: str) -> None:
+        with self._lock:
+            self._ids.add(ticket_id)
+
+    def release(self, ticket_id: str) -> None:
+        with self._lock:
+            self._ids.discard(ticket_id)
+
+    def owns(self, ticket_id: str) -> bool:
+        with self._lock:
+            return ticket_id in self._ids
+
+    def count(self) -> int:
+        with self._lock:
+            return len(self._ids)
+
+
+# States that trigger a session, in priority order (finish work before starting new).
+_ACTIONABLE_ORDER = ["QA", "Review", "In Progress", "Ready to Dev"]
+
+
+def poll_once(client, cfg: Config, ownership: Ownership, dispatch) -> None:
+    for state_name in _ACTIONABLE_ORDER:
+        state_id = cfg.state_ids.get(state_name)
+        if not state_id:
+            continue
+        role = role_for_state(state_name)
+        if role is None:
+            continue
+        for issue in client.list_issues_in_state(state_id):
+            if ownership.count() >= cfg.max_concurrency:
+                return
+            if ownership.owns(issue.id):
+                continue
+            ownership.claim(issue.id)
+            dispatch(issue, role)
+
+
+def run(cfg: Config, *, client=None, dispatch=None, sleep=time.sleep,
+        max_iterations=None) -> None:
+    from orchestrator.plane import PlaneClient
+    client = client or PlaneClient(cfg.plane_base_url, cfg.plane_api_key,
+                                   cfg.plane_workspace_slug, cfg.plane_project_id)
+    ownership = Ownership()
+    if dispatch is None:
+        from orchestrator.dispatch import make_dispatch
+        dispatch = make_dispatch(cfg, ownership)
+    i = 0
+    while max_iterations is None or i < max_iterations:
+        poll_once(client, cfg, ownership, dispatch)
+        sleep(cfg.poll_interval_seconds)
+        i += 1
