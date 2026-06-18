@@ -1,0 +1,24 @@
+# {{PROJECT_NAME}} — Agent Context
+
+This project is built by autonomous Claude Code sessions directed by the orchestrator. Read this
+before any task.
+
+## Always on
+- Follow `karpathy-guidelines` at all times: simplest change that meets the acceptance criteria,
+  surgical edits, surface assumptions, define verifiable success criteria.
+
+## Memory layer (REQUIRED)
+- Durable knowledge lives in `docs/` as markdown. Before every commit, append a short, cited entry
+  (what changed, why, ticket id, PR link). The commit hook blocks commits with no `docs/` update.
+- Each session is fresh and stateless: reconstruct context from the Plane ticket + full comment
+  trail + PR thread + `docs/` + git history. Never act on the latest comment alone.
+
+## Commands
+- Lint: `npm run lint`
+- Build: `npm run build`
+- Test: `npm test`
+(Adjust per project language; the commit hook reads `LINT_CMD`/`BUILD_CMD`/`TEST_CMD`.)
+
+## Workflow
+Your specific role (builder / reviewer / QA) and its steps are provided in the session's system
+prompt. Honor the board state machine and the `🤖 [role] FROM → TO` comment convention.
