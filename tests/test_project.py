@@ -3,6 +3,7 @@ import importlib
 from pathlib import Path
 from northstar.proc import CommandResult
 from northstar import project
+from northstar.plane_admin import CANONICAL_ORDER
 
 
 def _inputs(tmp_path):
@@ -13,34 +14,60 @@ def _inputs(tmp_path):
         repo_dir=repo, lint_cmd="make lint", build_cmd="make build", test_cmd="make test")
 
 
-class FakePlane:
-    def __init__(self, *a, **k): pass
-    def list_states(self):
-        return {"Ready to Dev": "s1", "QA": "s2", "Blocked": "s3"}
+class FakeAdmin:
+    def __init__(self):
+        self.created = None
+        self.ensured = None
+
+    def create_project(self, name, identifier, description=""):
+        self.created = (name, identifier)
+        return {"id": "newproj"}
+
+    def ensure_board(self, project_id, *, fresh):
+        self.ensured = (project_id, fresh)
+        return {n: f"sid-{n}" for n in CANONICAL_ORDER}
 
 
-def test_discover_state_ids(tmp_path):
-    ids = project.discover_state_ids(_inputs(tmp_path), client=FakePlane())
-    assert ids["QA"] == "s2"
-
-
-def test_add_project_links_existing_writes_config_and_registers(tmp_path, monkeypatch):
+def test_add_project_existing_runs_ensure_board_and_writes_config(tmp_path, monkeypatch):
     monkeypatch.setenv("NORTHSTAR_HOME", str(tmp_path / ".northstar"))
     monkeypatch.delenv("NORTHSTAR_ASSETS_DIR", raising=False)
     import northstar.paths as paths; importlib.reload(paths)
     from northstar import project
     from northstar.proc import CommandResult
-    runner = lambda cmd, **kw: CommandResult(0, "", "")   # gh repo view ok => exists
-    inp = _inputs(tmp_path)
-    meta = project.add_project(inp, runner=runner, client=FakePlane())
-    cfg = paths.project_config_path("acme")
-    assert cfg.exists()
+    repo = tmp_path / "repo"; (repo / "docs").mkdir(parents=True)
+    inp = project.ProjectInputs(
+        name="acme", plane_base_url="https://x", plane_api_key="k", plane_workspace_slug="w",
+        plane_project_id="p", github_repo="o/acme", repo_dir=repo,
+        lint_cmd="make lint", build_cmd="make build", test_cmd="make test")
+    admin = FakeAdmin()
+    runner = lambda cmd, **kw: CommandResult(0, "", "")  # gh ok everywhere
+    meta = project.add_project(inp, runner=runner, admin=admin)
+    assert admin.ensured == ("p", False)        # existing -> fresh False, project id "p"
     import yaml
-    data = yaml.safe_load(cfg.read_text())
-    assert data["github_repo"] == "o/acme"
-    assert data["state_ids"]["QA"] == "s2"
+    data = yaml.safe_load(paths.project_config_path("acme").read_text())
+    assert data["plane_project_id"] == "p"
+    assert data["state_ids"]["QA"] == "sid-QA"
     assert "acme" in paths.list_projects()
-    assert meta["github_repo"] == "o/acme"
+
+
+def test_add_project_new_creates_plane_project_then_ensures_fresh(tmp_path, monkeypatch):
+    monkeypatch.setenv("NORTHSTAR_HOME", str(tmp_path / ".northstar"))
+    monkeypatch.delenv("NORTHSTAR_ASSETS_DIR", raising=False)
+    import northstar.paths as paths; importlib.reload(paths)
+    from northstar import project
+    from northstar.proc import CommandResult
+    repo = tmp_path / "repo"; (repo / "docs").mkdir(parents=True)
+    inp = project.ProjectInputs(
+        name="acme", plane_base_url="https://x", plane_api_key="k", plane_workspace_slug="w",
+        plane_project_id="", github_repo="o/acme", repo_dir=repo,
+        lint_cmd="l", build_cmd="b", test_cmd="t",
+        plane_new_project=True, plane_project_name="Acme", plane_identifier="ACME")
+    admin = FakeAdmin()
+    project.add_project(inp, runner=lambda c, **k: CommandResult(0, "", ""), admin=admin)
+    assert admin.created == ("Acme", "ACME")
+    assert admin.ensured == ("newproj", True)   # new -> fresh True, id from create_project
+    data = __import__("yaml").safe_load(paths.project_config_path("acme").read_text())
+    assert data["plane_project_id"] == "newproj"
 
 
 def test_detect_build_commands_from_package_json(tmp_path):
@@ -75,7 +102,7 @@ def test_add_project_aborts_when_gh_unauthenticated(tmp_path, monkeypatch):
         return CommandResult(0, "", "")
     inp = _inputs(tmp_path)
     with pytest.raises(RuntimeError, match="GitHub not reachable"):
-        project.add_project(inp, runner=runner, client=FakePlane())
+        project.add_project(inp, runner=runner, admin=FakeAdmin())
 
 
 def test_add_project_clones_existing_repo_when_not_local(tmp_path, monkeypatch):
@@ -97,7 +124,7 @@ def test_add_project_clones_existing_repo_when_not_local(tmp_path, monkeypatch):
             repo_dir.mkdir(parents=True, exist_ok=True)
             (repo_dir / "docs").mkdir(parents=True, exist_ok=True)
         return CommandResult(0, "", "")
-    project.add_project(inp, runner=runner, client=FakePlane())
+    project.add_project(inp, runner=runner, admin=FakeAdmin())
     clone_calls = [c for c in recorded if len(c) >= 2 and c[0] == "gh" and "clone" in c]
     assert clone_calls, "expected a gh repo clone command to be issued"
     assert any("o/acme" in c for c in clone_calls[0])

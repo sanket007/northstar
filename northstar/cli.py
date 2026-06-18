@@ -50,7 +50,11 @@ def project_add(
     plane_base_url: str = typer.Option(..., prompt=True),
     plane_api_key: str = typer.Option(..., prompt=True, hide_input=True),
     plane_workspace_slug: str = typer.Option(..., prompt=True),
-    plane_project_id: str = typer.Option(..., prompt=True),
+    new_plane_project: bool = typer.Option(False, "--new-plane-project/--existing-plane-project",
+                                           prompt="Create a NEW Plane project?"),
+    plane_project_id: str = typer.Option("", "--plane-project-id"),
+    plane_project_name: str = typer.Option("", "--plane-project-name"),
+    plane_identifier: str = typer.Option("", "--plane-identifier"),
     github_repo: str = typer.Option(..., prompt="GitHub repo (owner/name)"),
     repo_dir: Path = typer.Option(..., prompt="Local path for the repo"),
     lint_cmd: str = typer.Option("npm run lint", prompt=True),
@@ -58,12 +62,22 @@ def project_add(
     test_cmd: str = typer.Option("npm test", prompt=True),
     create_if_missing: bool = typer.Option(False, "--create"),
 ):
-    """Add or link a project."""
+    """Add or link a project (sets up the Plane project + board)."""
+    if new_plane_project:
+        if not plane_project_name:
+            plane_project_name = typer.prompt("Plane project name")
+        if not plane_identifier:
+            plane_identifier = typer.prompt("Plane project identifier (short, UPPERCASE)")
+    else:
+        if not plane_project_id:
+            plane_project_id = typer.prompt("Existing Plane project id")
     inp = project.ProjectInputs(
         name=name, plane_base_url=plane_base_url, plane_api_key=plane_api_key,
         plane_workspace_slug=plane_workspace_slug, plane_project_id=plane_project_id,
         github_repo=github_repo, repo_dir=repo_dir,
-        lint_cmd=lint_cmd, build_cmd=build_cmd, test_cmd=test_cmd)
+        lint_cmd=lint_cmd, build_cmd=build_cmd, test_cmd=test_cmd,
+        plane_new_project=new_plane_project, plane_project_name=plane_project_name,
+        plane_identifier=plane_identifier)
     meta = project.add_project(inp, create_if_missing=create_if_missing)
     typer.echo(f"added {name}: {meta['github_repo']}")
 

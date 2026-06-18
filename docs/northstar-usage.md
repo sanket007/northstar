@@ -24,6 +24,13 @@ northstar project add      # prompts for Plane details, repo URL, build commands
 northstar project list
 ```
 
+`project add` now sets up Plane for you: choose **new** (it creates the project and the 8-state
+board) or **existing** (it reconciles the board to the 8 states on a project id you provide).
+
+> Note: on the **new** path, `project add` creates the Plane project before wiring GitHub. If a
+> later step fails, the Plane project already exists — re-run with `--existing-plane-project <id>`
+> (its identifier is now taken), or delete the half-created project first.
+
 ## Run (tmux, detached)
 ```bash
 northstar start <project>      # runs the daemon in tmux session ns-<project>

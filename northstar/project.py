@@ -6,7 +6,7 @@ import stat
 from dataclasses import dataclass
 
 import yaml
-from orchestrator.plane import PlaneClient
+from northstar.plane_admin import PlaneAdmin
 from northstar.proc import run
 from northstar.assets import templates_dir
 from northstar import paths
@@ -85,20 +85,18 @@ class ProjectInputs:
     claude_model: str = "claude-opus-4-8"
     poll_interval_seconds: int = 30
     max_concurrency: int = 1
+    plane_new_project: bool = False
+    plane_project_name: str = ""
+    plane_identifier: str = ""
 
 
-def discover_state_ids(inp: "ProjectInputs", client=None) -> dict:
-    client = client or PlaneClient(inp.plane_base_url, inp.plane_api_key,
-                                   inp.plane_workspace_slug, inp.plane_project_id)
-    return client.list_states()
-
-
-def write_project_config(inp: "ProjectInputs", state_ids: dict, mcp_path: Path) -> Path:
+def write_project_config(inp: "ProjectInputs", state_ids: dict, mcp_path: Path,
+                         project_id: str) -> Path:
     cfg = {
         "plane_base_url": inp.plane_base_url,
         "plane_api_key": inp.plane_api_key,
         "plane_workspace_slug": inp.plane_workspace_slug,
-        "plane_project_id": inp.plane_project_id,
+        "plane_project_id": project_id,
         "github_repo": inp.github_repo,
         "repo_dir": str(inp.repo_dir),
         "worktrees_root": str(paths.home() / "worktrees" / inp.name),
@@ -116,10 +114,19 @@ def write_project_config(inp: "ProjectInputs", state_ids: dict, mcp_path: Path) 
     return out
 
 
-def add_project(inp: "ProjectInputs", *, runner=run,
-                create_if_missing=False, client=None) -> dict:
+def add_project(inp: "ProjectInputs", *, runner=run, create_if_missing=False, admin=None) -> dict:
     if not runner(["gh", "auth", "status"]).ok:
         raise RuntimeError("GitHub not reachable — run: gh auth login")
+
+    admin = admin or PlaneAdmin(inp.plane_base_url, inp.plane_api_key, inp.plane_workspace_slug)
+    if inp.plane_new_project:
+        project_id = admin.create_project(inp.plane_project_name, inp.plane_identifier)["id"]
+        fresh = True
+    else:
+        project_id = inp.plane_project_id
+        fresh = False
+    state_ids = admin.ensure_board(project_id, fresh=fresh)
+
     if not repo_exists(inp.github_repo, runner=runner):
         if not create_if_missing:
             raise RuntimeError(
@@ -128,11 +135,11 @@ def add_project(inp: "ProjectInputs", *, runner=run,
     else:
         if not Path(inp.repo_dir).exists():
             runner(["gh", "repo", "clone", inp.github_repo, str(inp.repo_dir)])
+
     install_guardrails(inp.repo_dir, inp.name, inp.lint_cmd, inp.build_cmd, inp.test_cmd)
-    state_ids = discover_state_ids(inp, client=client)
     mcp_path = paths.home() / "plane-mcp.json"
-    write_project_config(inp, state_ids, mcp_path)
+    write_project_config(inp, state_ids, mcp_path, project_id)
     meta = {"github_repo": inp.github_repo, "repo_dir": str(inp.repo_dir),
-            "plane_project_id": inp.plane_project_id}
+            "plane_project_id": project_id}
     paths.register_project(inp.name, meta)
     return meta
