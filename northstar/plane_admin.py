@@ -1,5 +1,4 @@
 from __future__ import annotations
-import json
 import httpx
 
 CANONICAL_GROUPS = {
@@ -24,8 +23,7 @@ class PlaneAdmin:
 
     def create_project(self, name, identifier, description="") -> dict:
         payload = {"name": name, "identifier": identifier, "description": description}
-        r = self._http.post(f"{self._base}/projects/",
-                            content=json.dumps(payload, separators=(", ", ": ")))
+        r = self._http.post(f"{self._base}/projects/", json=payload)
         r.raise_for_status()
         return r.json()
 
@@ -46,14 +44,12 @@ class PlaneAdmin:
         payload = {"name": name, "group": group, "color": color}
         if sequence is not None:
             payload["sequence"] = sequence
-        r = self._http.post(f"{self._base}/projects/{project_id}/states/",
-                            content=json.dumps(payload, separators=(", ", ": ")))
+        r = self._http.post(f"{self._base}/projects/{project_id}/states/", json=payload)
         r.raise_for_status()
         return r.json()
 
     def update_state(self, project_id, state_id, **fields) -> None:
-        r = self._http.patch(f"{self._base}/projects/{project_id}/states/{state_id}/",
-                             content=json.dumps(fields, separators=(", ", ": ")))
+        r = self._http.patch(f"{self._base}/projects/{project_id}/states/{state_id}/", json=fields)
         r.raise_for_status()
 
     def delete_state(self, project_id, state_id) -> None:
