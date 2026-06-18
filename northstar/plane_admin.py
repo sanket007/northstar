@@ -1,4 +1,5 @@
 from __future__ import annotations
+import sys
 import httpx
 
 CANONICAL_GROUPS = {
@@ -22,6 +23,10 @@ class PlaneAdmin:
         self._http.headers.update({"X-API-Key": api_key, "Content-Type": "application/json"})
 
     def create_project(self, name, identifier, description="") -> dict:
+        if not identifier or not identifier.isalnum() or identifier != identifier.upper() or len(identifier) > 12:
+            raise ValueError(
+                "Plane project identifier must be non-empty, UPPERCASE, alphanumeric, and ≤12 chars "
+                f"(got {identifier!r})")
         payload = {"name": name, "identifier": identifier, "description": description}
         r = self._http.post(f"{self._base}/projects/", json=payload)
         r.raise_for_status()
@@ -94,7 +99,9 @@ class PlaneAdmin:
                 if name in CANONICAL_GROUPS or s.get("default"):
                     continue
                 if self.state_has_items(project_id, s["id"]):
+                    print(f"northstar: leaving non-canonical state {name!r} (has work items)", file=sys.stderr)
                     continue  # holds work items — warn (left in place), never delete
+                print(f"northstar: removing empty non-canonical state {name!r}", file=sys.stderr)
                 self.delete_state(project_id, s["id"])
                 by_name.pop(name, None)
 

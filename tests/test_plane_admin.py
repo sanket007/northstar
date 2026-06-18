@@ -136,7 +136,7 @@ def test_ensure_board_fresh_renames_repurposes_creates():
     assert set(ids) == set(CANONICAL_ORDER)
 
 
-def test_ensure_board_existing_creates_missing_and_warns_nonempty_extra():
+def test_ensure_board_existing_creates_missing_and_warns_nonempty_extra(capsys):
     states = [
         {"id": "x1", "name": "In Progress", "group": "started"},
         {"id": "x2", "name": "Notes", "group": "started"},   # extra, has items -> must NOT delete
@@ -151,3 +151,14 @@ def test_ensure_board_existing_creates_missing_and_warns_nonempty_extra():
     assert "x2" not in a.deletes
     # the empty extra may be removed
     assert "x3" in a.deletes
+    # check stderr warnings
+    captured = capsys.readouterr()
+    assert "leaving non-canonical state 'Notes' (has work items)" in captured.err
+    assert "removing empty non-canonical state 'Scratch'" in captured.err
+
+
+def test_create_project_rejects_bad_identifier():
+    import pytest
+    a = RecordingAdmin([])
+    with pytest.raises(ValueError):
+        a.create_project("Web", "web-1")
