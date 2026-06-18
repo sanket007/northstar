@@ -129,9 +129,10 @@ CLI additions: `project add` gains `--new-plane-project` / `--existing-plane-pro
 
 - `PlaneAdmin.create_project` creates a project and returns its id (unit-tested with a faked HTTP
   client asserting the POST payload + parsed id).
-- `ensure_board(fresh=True)` against the 5 known defaults issues exactly: 4 PATCH renames, 1 PATCH
-  repurpose (Cancelled→Blocked/started), 3 POST creates — and returns all 8 name→id pairs.
-  Unit-tested by asserting the sequence of calls a fake client receives.
+- `ensure_board(fresh=True)` against the 5 known defaults issues exactly: 4 PATCH updates (3 renames
+  — Backlog→Draft, Todo→Ready to Dev, Done→Completed — plus 1 repurpose Cancelled→Blocked/started),
+  In Progress kept as-is (no call), and 3 POST creates (Review, QA, Deployed) — and returns all 8
+  name→id pairs. Unit-tested by asserting the calls a fake client receives.
 - `ensure_board(fresh=False)` creates only missing states, and never deletes a state reported to
   hold items or the default state (unit-tested: a non-empty extra state is warned, not deleted).
 - `project add` (new-project path) end-to-end writes a per-project config whose `state_ids` contains
