@@ -61,3 +61,41 @@ class PlaneAdmin:
                            params={"state": state_id, "per_page": 1})
         r.raise_for_status()
         return len(r.json().get("results", [])) > 0
+
+    _DEFAULT_RENAME = {"Backlog": "Draft", "Todo": "Ready to Dev", "Done": "Completed"}
+
+    def ensure_board(self, project_id, *, fresh: bool) -> dict:
+        states = self.list_states(project_id)
+        by_name = {s["name"]: s for s in states}
+
+        # 1. rename known Plane defaults to canonical names (only if target absent)
+        for src, dst in self._DEFAULT_RENAME.items():
+            if src in by_name and dst not in by_name:
+                self.update_state(project_id, by_name[src]["id"],
+                                  name=dst, group=CANONICAL_GROUPS[dst])
+                s = by_name.pop(src); s["name"] = dst; by_name[dst] = s
+
+        # 2. fresh projects: repurpose the seeded Cancelled state into Blocked (no native group)
+        if fresh and "Cancelled" in by_name and "Blocked" not in by_name:
+            self.update_state(project_id, by_name["Cancelled"]["id"], name="Blocked", group="started")
+            s = by_name.pop("Cancelled"); s["name"] = "Blocked"; by_name["Blocked"] = s
+
+        # 3. create any canonical states still missing, ordered by sequence
+        seq = 15000
+        for name in CANONICAL_ORDER:
+            if name not in by_name:
+                by_name[name] = self.create_state(project_id, name, CANONICAL_GROUPS[name],
+                                                   sequence=seq)
+            seq += 5000
+
+        # 4. existing projects: remove only safe leftover (empty, non-default, non-canonical) states
+        if not fresh:
+            for name, s in list(by_name.items()):
+                if name in CANONICAL_GROUPS or s.get("default"):
+                    continue
+                if self.state_has_items(project_id, s["id"]):
+                    continue  # holds work items — warn (left in place), never delete
+                self.delete_state(project_id, s["id"])
+                by_name.pop(name, None)
+
+        return {name: by_name[name]["id"] for name in CANONICAL_ORDER}

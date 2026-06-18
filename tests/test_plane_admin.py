@@ -77,3 +77,77 @@ def test_state_has_items_false_when_empty():
         return_value=httpx.Response(200, json={"results": []}))
     assert admin().state_has_items("p1", "s1") is False
     assert b"state=s1" in route.calls.last.request.url.query
+
+
+class RecordingAdmin(PlaneAdmin):
+    """A PlaneAdmin whose CRUD methods are replaced by recorders (no HTTP)."""
+    def __init__(self, states):
+        self._states = states           # list of {id,name,group,default?}
+        self.updates = []
+        self.creates = []
+        self.deletes = []
+        self._has_items = set()         # state ids that "have items"
+        self._next = 100
+
+    def list_states(self, project_id):
+        return list(self._states)
+
+    def update_state(self, project_id, state_id, **fields):
+        self.updates.append((state_id, fields))
+        for s in self._states:
+            if s["id"] == state_id:
+                s.update(fields)
+
+    def create_state(self, project_id, name, group, color="#6B7280", sequence=None):
+        self._next += 1
+        s = {"id": f"new{self._next}", "name": name, "group": group}
+        self._states.append(s)
+        self.creates.append((name, group))
+        return s
+
+    def delete_state(self, project_id, state_id):
+        self.deletes.append(state_id)
+        self._states = [s for s in self._states if s["id"] != state_id]
+
+    def state_has_items(self, project_id, state_id):
+        return state_id in self._has_items
+
+
+DEFAULTS = lambda: [
+    {"id": "d1", "name": "Backlog", "group": "backlog", "default": True},
+    {"id": "d2", "name": "Todo", "group": "unstarted"},
+    {"id": "d3", "name": "In Progress", "group": "started"},
+    {"id": "d4", "name": "Done", "group": "completed"},
+    {"id": "d5", "name": "Cancelled", "group": "cancelled"},
+]
+
+
+def test_ensure_board_fresh_renames_repurposes_creates():
+    a = RecordingAdmin(DEFAULTS())
+    ids = a.ensure_board("p1", fresh=True)
+    # 4 updates: Backlog->Draft, Todo->Ready to Dev, Done->Completed, Cancelled->Blocked
+    renamed = {f["name"] for _, f in a.updates}
+    assert renamed == {"Draft", "Ready to Dev", "Completed", "Blocked"}
+    assert len(a.updates) == 4
+    # 3 creates: Review, QA, Deployed
+    assert {n for n, _ in a.creates} == {"Review", "QA", "Deployed"}
+    assert a.deletes == []
+    # returns all 8 canonical ids
+    assert set(ids) == set(CANONICAL_ORDER)
+
+
+def test_ensure_board_existing_creates_missing_and_warns_nonempty_extra():
+    states = [
+        {"id": "x1", "name": "In Progress", "group": "started"},
+        {"id": "x2", "name": "Notes", "group": "started"},   # extra, has items -> must NOT delete
+        {"id": "x3", "name": "Scratch", "group": "started"},  # extra, empty -> may delete
+    ]
+    a = RecordingAdmin(states)
+    a._has_items = {"x2"}
+    ids = a.ensure_board("p1", fresh=False)
+    # all 8 canonical present in the returned map
+    assert set(ids) == set(CANONICAL_ORDER)
+    # the non-empty extra was never deleted
+    assert "x2" not in a.deletes
+    # the empty extra may be removed
+    assert "x3" in a.deletes
