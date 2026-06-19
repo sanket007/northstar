@@ -15,11 +15,16 @@ interactive, grill-first session. You have the Plane MCP tools (create/list work
   the user's agreement before going further.
 
 ## Step 3 — Grill the whole plan (MANDATORY, before creating anything)
-Invoke the `grill-me` skill and interview the user across the **entire** plan. Resolve every ambiguity:
-unclear or missing **acceptance criteria**, fuzzy scope, undefined dependencies, and missing
-**citations** (links to the spec/plan section, files, or docs each task is based on). Keep grilling until
-**every task is crisp enough that an autonomous builder could start it with no further questions.** This
-front-loads all clarification here so the build phase never stalls on questions.
+Invoke the `grill-me` skill and interview the user across the **entire** plan. Quality downstream is
+capped by decomposition quality here, so resolve every ambiguity. For **each** task, drive it until it has:
+- **Testable acceptance criteria** — each one objectively verifiable (a test or an observable behavior),
+  not vague ("works well"). An autonomous QA must be able to pass/fail each criterion from the outside.
+- **Explicit non-goals / out-of-scope** — what the task must NOT touch, to keep PRs small and scoped.
+- **Citations** — links to the spec/plan section, files, or docs the task is based on.
+- **Right size** — deliverable as one focused PR. If a task is too big, split it; if trivially small,
+  fold it into its neighbor.
+Keep grilling until **every task is crisp enough that an autonomous builder could start it with no
+further questions.** This front-loads all clarification so the build phase never stalls.
 
 ## Step 4 — Extract the dependency graph
 Infer `blocked_by` edges from the plan's task order and the `Interfaces: Consumes/Produces` blocks: a
@@ -32,8 +37,8 @@ For each task, compute a stable id `external_id = <plan-filename>#<task-id>`.
   `external_id`, a `[ns:<external_id>]` marker in its description), **skip it** (or update) — never
   duplicate. Match by title/content if no marker is present.
 - Otherwise `create_work_item` in the **Draft** state with: a clear title; a description containing the
-  **acceptance criteria**, the **citations**, and a reference to the source plan/task; and the
-  `external_id` (or the `[ns:…]` marker in the description as a fallback).
+  **testable acceptance criteria**, the **non-goals/out-of-scope**, the **citations**, and a reference
+  to the source plan/task; and the `external_id` (or the `[ns:…]` marker in the description as a fallback).
 
 ## Step 6 — Create relations
 For each `blocked_by` edge, call `create_work_item_relation` (relation_type `blocked_by`). Edges may

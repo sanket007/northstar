@@ -147,3 +147,29 @@ def test_poll_dispatches_ready_task_with_no_blockers():
     dispatched = []
     poll_once(client, cfg, Ownership(), lambda i, r: dispatched.append(i.id))
     assert dispatched == ["t1"]
+
+
+# --- rework counting ---
+from dataclasses import dataclass
+from orchestrator.poller import rework_count
+
+
+@dataclass
+class _C:
+    body_html: str
+
+
+def test_rework_count_counts_only_reviewer_qa_bounces():
+    comments = [
+        _C("🤖 [builder] Ready to Dev → In Progress: starting"),   # not a bounce
+        _C("🤖 [builder] context loaded"),                          # not a bounce
+        _C("🤖 [reviewer] Review → In Progress: changes requested"),  # bounce
+        _C("🤖 [reviewer] Review → QA: approved"),                  # not a bounce
+        _C("🤖 [qa] QA → In Progress: QA failed"),                 # bounce
+        _C("🤖 [qa] QA → Completed: merged"),                      # not a bounce
+    ]
+    assert rework_count(comments) == 2
+
+
+def test_rework_count_is_case_insensitive_and_null_safe():
+    assert rework_count([_C("[REVIEWER] REVIEW → IN PROGRESS"), _C(None)]) == 1

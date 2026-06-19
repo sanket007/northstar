@@ -8,3 +8,9 @@ def test_importer_doc_has_key_invariants():
     assert "external_id" in d or "[ns:" in d     # idempotency marker
     assert "acceptance criteria" in d and "citation" in d
     assert "directly in the plane board" in d or "hand-created" in d  # compliance note
+
+
+def test_importer_requires_testable_ac_and_non_goals():
+    d = Path("templates/plane-importer.md").read_text().lower()
+    assert "testable acceptance criteria" in d
+    assert "non-goal" in d or "out-of-scope" in d

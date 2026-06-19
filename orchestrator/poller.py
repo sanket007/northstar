@@ -49,6 +49,20 @@ def dependencies_clear(client, cfg, issue, cache: dict | None = None) -> bool:
     return True
 
 
+def rework_count(comments) -> int:
+    """How many times reviewer/QA bounced this ticket back to In Progress.
+
+    Counts append-only trail comments authored by the reviewer or QA role that moved the
+    ticket to In Progress. Robust to comment casing; ignores the builder's initial claim.
+    """
+    n = 0
+    for c in comments:
+        body = (getattr(c, "body_html", "") or "").lower()
+        if ("[reviewer]" in body or "[qa]" in body) and "in progress" in body:
+            n += 1
+    return n
+
+
 def poll_once(client, cfg: Config, ownership: Ownership, dispatch) -> None:
     dep_cache: dict = {}
     for state_name in _ACTIONABLE_ORDER:

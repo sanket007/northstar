@@ -85,6 +85,8 @@ class ProjectInputs:
     claude_model: str = "claude-opus-4-8"
     poll_interval_seconds: int = 30
     max_concurrency: int = 1
+    base_branch: str = "main"
+    max_reworks: int = 3
     plane_new_project: bool = False
     plane_project_name: str = ""
     plane_identifier: str = ""
@@ -106,6 +108,10 @@ def write_project_config(inp: "ProjectInputs", state_ids: dict, mcp_path: Path,
         "mcp_config_path": str(mcp_path),
         "templates_dir": str(templates_dir()),
         "max_concurrency": inp.max_concurrency,
+        "base_branch": inp.base_branch,
+        # trunk-health gate run after each merge: lint + build + test, whichever are set
+        "verify_cmd": " && ".join(c for c in (inp.lint_cmd, inp.build_cmd, inp.test_cmd) if c),
+        "max_reworks": inp.max_reworks,
         "state_ids": state_ids,
     }
     out = paths.project_config_path(inp.name)

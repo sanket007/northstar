@@ -28,6 +28,13 @@ class Config:
     max_concurrency: int = 1
     session_timeout_seconds: int = 1800
     max_turns: int = 40
+    base_branch: str = "main"
+    # Shell command that must pass for trunk to be considered healthy after a merge.
+    # When None, the post-merge main-health check is skipped.
+    verify_cmd: str | None = None
+    # How many reviewer/QA → In Progress bounces a ticket may take before it is
+    # parked in Blocked for a human instead of looping forever.
+    max_reworks: int = 3
 
 
 def load_config(path: Path) -> Config:
@@ -52,4 +59,7 @@ def load_config(path: Path) -> Config:
         max_concurrency=int(data.get("max_concurrency", 1)),
         session_timeout_seconds=int(data.get("session_timeout_seconds", 1800)),
         max_turns=int(data.get("max_turns", 40)),
+        base_branch=data.get("base_branch", "main"),
+        verify_cmd=data.get("verify_cmd"),
+        max_reworks=int(data.get("max_reworks", 3)),
     )
