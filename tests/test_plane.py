@@ -77,3 +77,18 @@ def test_send_retries_on_5xx_then_succeeds():
         c = PlaneClient("https://x", "k", "w", "p", client=httpx.Client(), sleep=lambda d: slept.append(d))
         assert c.list_states() == {"Draft": "s1"}
         assert route.call_count == 2 and slept  # retried and slept once
+
+
+@respx.mock
+def test_get_issue_and_list_blocked_by():
+    import httpx, respx
+    from orchestrator.plane import PlaneClient, Issue
+    pfx = "https://x/api/v1/workspaces/w/projects/p"
+    respx.get(f"{pfx}/work-items/i9/").mock(return_value=httpx.Response(200, json={
+        "id": "i9", "name": "n", "description_html": "", "state": "sDone", "sequence_id": 9}))
+    respx.get(f"{pfx}/work-items/i1/relations/").mock(return_value=httpx.Response(200, json={
+        "blocked_by": ["i9"], "blocking": []}))
+    c = PlaneClient("https://x", "k", "w", "p", client=httpx.Client())
+    assert c.get_issue("i9") == Issue("i9", "n", "", "sDone", 9)
+    assert c.list_blocked_by("i1") == ["i9"]
+    assert c.list_blocked_by("i1") == ["i9"] or c.list_blocked_by("i9") == []  # tolerant
