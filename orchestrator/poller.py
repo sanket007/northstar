@@ -1,5 +1,6 @@
 from __future__ import annotations
 from threading import Lock
+import sys
 import time
 
 from orchestrator.config import Config
@@ -34,6 +35,8 @@ _ACTIONABLE_ORDER = ["QA", "Review", "In Progress", "Ready to Dev"]
 
 def poll_once(client, cfg: Config, ownership: Ownership, dispatch) -> None:
     for state_name in _ACTIONABLE_ORDER:
+        if ownership.count() >= cfg.max_concurrency:
+            return
         state_id = cfg.state_ids.get(state_name)
         if not state_id:
             continue
@@ -57,9 +60,12 @@ def run(cfg: Config, *, client=None, dispatch=None, sleep=time.sleep,
     ownership = Ownership()
     if dispatch is None:
         from orchestrator.dispatch import make_dispatch
-        dispatch = make_dispatch(cfg, ownership)
+        dispatch = make_dispatch(cfg, ownership, plane=client)
     i = 0
     while max_iterations is None or i < max_iterations:
-        poll_once(client, cfg, ownership, dispatch)
+        try:
+            poll_once(client, cfg, ownership, dispatch)
+        except Exception as e:  # noqa: BLE001 — daemon must survive transient errors
+            print(f"northstar: poll error: {e}", file=sys.stderr)
         sleep(cfg.poll_interval_seconds)
         i += 1

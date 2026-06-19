@@ -60,3 +60,36 @@ def test_poll_skips_owned_tickets():
     calls = []
     poll_once(client, cfg, own, lambda issue, role: calls.append(issue.id))
     assert calls == []
+
+
+def test_run_survives_poll_exception(monkeypatch):
+    from orchestrator import poller
+    from orchestrator.config import Config
+    from pathlib import Path
+    cfg = Config(plane_base_url="x", plane_api_key="k", plane_workspace_slug="w", plane_project_id="p",
+                 github_repo="o/r", repo_dir=Path("/t"), worktrees_root=Path("/t"), poll_interval_seconds=0,
+                 claude_binary="claude", claude_model="m", mcp_config_path=Path("/t/m.json"),
+                 templates_dir=Path("/t"), state_ids={}, max_concurrency=1)
+    class BoomClient:
+        def list_issues_in_state(self, s): raise RuntimeError("plane down")
+    calls = {"n": 0}
+    def fake_sleep(_): calls["n"] += 1
+    # must NOT raise; loop runs max_iterations then returns
+    poller.run(cfg, client=BoomClient(), dispatch=lambda i, r: None, sleep=fake_sleep, max_iterations=2)
+    assert calls["n"] == 2
+
+
+def test_poll_once_short_circuits_when_full():
+    from orchestrator.poller import Ownership, poll_once
+    from orchestrator.config import Config
+    from pathlib import Path
+    cfg = Config(plane_base_url="x", plane_api_key="k", plane_workspace_slug="w", plane_project_id="p",
+                 github_repo="o/r", repo_dir=Path("/t"), worktrees_root=Path("/t"), poll_interval_seconds=0,
+                 claude_binary="c", claude_model="m", mcp_config_path=Path("/t/m.json"), templates_dir=Path("/t"),
+                 state_ids={"Ready to Dev": "s", "In Progress": "s2", "Review": "s3", "QA": "s4"}, max_concurrency=1)
+    own = Ownership(); own.claim("already")
+    listed = []
+    class C:
+        def list_issues_in_state(self, s): listed.append(s); return []
+    poll_once(C(), cfg, own, lambda i, r: None)
+    assert listed == []  # full -> no list calls at all

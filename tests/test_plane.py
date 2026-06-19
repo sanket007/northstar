@@ -65,3 +65,15 @@ def test_add_comment_posts_html():
     make_client().add_comment("i1", "<p>hi</p>")
     assert route.called
     assert b"<p>hi</p>" in route.calls.last.request.content
+
+
+def test_send_retries_on_5xx_then_succeeds():
+    import httpx, respx
+    from orchestrator.plane import PlaneClient
+    slept = []
+    with respx.mock:
+        route = respx.get("https://x/api/v1/workspaces/w/projects/p/states/")
+        route.side_effect = [httpx.Response(503), httpx.Response(200, json={"results": [{"id": "s1", "name": "Draft"}], "next_cursor": None})]
+        c = PlaneClient("https://x", "k", "w", "p", client=httpx.Client(), sleep=lambda d: slept.append(d))
+        assert c.list_states() == {"Draft": "s1"}
+        assert route.call_count == 2 and slept  # retried and slept once
