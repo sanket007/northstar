@@ -17,6 +17,10 @@ northstar init             # install skills to latest + create ~/.northstar
 Prerequisites: Python 3.11+, git, GitHub CLI (`gh auth login`), Claude Code (`claude`, logged in),
 `uv`/`uvx`, tmux, and Node/`npx` (for the grill-me skill). `doctor` reports each.
 
+northstar picks a **process backend** at init: `tmux` (live-attach, needs tmux) or `detached`
+(no dependency, logs via file). Override with `northstar init --backend tmux|detached`. Both survive the
+terminal closing; neither survives a reboot.
+
 ## Add a project
 ```bash
 northstar project add      # prompts for Plane details, repo URL, build commands

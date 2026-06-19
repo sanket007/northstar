@@ -17,7 +17,9 @@ def test_doctor_command_exit_code_reflects_critical(monkeypatch):
 def test_init_command_invokes_do_init(monkeypatch):
     import northstar.cli as cli; importlib.reload(cli)
     seen = {}
-    monkeypatch.setattr(cli, "do_init", lambda deep=False: seen.setdefault("deep", deep) or 0)
+    monkeypatch.setattr(cli, "do_init", lambda deep=False, backend="tmux": seen.update(deep=deep, backend=backend) or 0)
+    from northstar.proc import CommandResult
+    monkeypatch.setattr(cli.proc, "run", lambda *a, **k: CommandResult(0, "tmux 3.3", ""))
     result = runner.invoke(cli.app, ["init"])
     assert result.exit_code == 0
     assert seen["deep"] is False
@@ -81,3 +83,12 @@ def test_plan_import_command_invokes_run_import(monkeypatch):
     result = runner.invoke(cli.app, ["plan", "import", "acme", "plan.md"])
     assert result.exit_code == 0
     assert seen == {"name": "acme", "plan": "plan.md"}
+
+
+def test_init_passes_backend_through(monkeypatch):
+    import northstar.cli as cli; importlib.reload(cli)
+    seen = {}
+    monkeypatch.setattr(cli, "do_init", lambda deep=False, backend="tmux": seen.update(backend=backend) or 0)
+    result = runner.invoke(cli.app, ["init", "--backend", "detached"])
+    assert result.exit_code == 0
+    assert seen["backend"] == "detached"
