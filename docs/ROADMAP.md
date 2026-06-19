@@ -92,6 +92,13 @@ Automate idea → tasks-in-Plane, where the user hands off.
   acceptance criteria, and a **dependency graph** (via `create_work_item_relation`) capturing what
   must clear before a task is workable.
 
+### Process backend hardening (deferred)
+- **OS-service backend** (launchd/systemd) so daemons auto-start on boot — neither the tmux nor the
+  detached backend survives a reboot today.
+- **Detached PID-reuse safety** — `_detached_is_running` checks PID liveness only; verify process
+  identity (start-time/cmdline) so a recycled PID can't cause a false "already running" or a wrong-process
+  `stop`.
+
 ### Phase 6 — Multi-project & "team while you sleep"
 The end state.
 - **Multiple projects in parallel**, each with its own board, repo, and conventions.
