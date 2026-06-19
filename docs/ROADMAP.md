@@ -146,3 +146,9 @@ The end state.
   not re-verify their presence afterward; add a presence check + a printed one-liner on failure
   (spec §4). grill-me's `npx skills` picker may hang non-interactively.
 - **`--seed`** — optional test-ticket seeding (needs a `create_work_item` on the Plane client).
+- **Dependency-graph cycle detection** — the scheduler gates Ready-to-Dev on `blocked_by`; a cycle leaves
+  those tasks ungated forever (silently). Today the importer asks the user to confirm the graph (catches
+  cycles at import). Add scheduler-side cycle detection / a "stuck Ready-to-Dev" warning. (bridge+scheduler final review.)
+- **Dependency-read call volume** — each gated Ready-to-Dev candidate costs 1 relations GET + N blocker
+  GETs per poll (cached within a poll, not across). A board full of blocked tasks (no concurrency
+  short-circuit) is the worst case vs Plane's 60/min. Add a cross-poll cache when moving past concurrency=1.
