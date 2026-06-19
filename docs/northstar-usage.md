@@ -31,6 +31,14 @@ board) or **existing** (it reconciles the board to the 8 states on a project id 
 > later step fails, the Plane project already exists — re-run with `--existing-plane-project <id>`
 > (its identifier is now taken), or delete the half-created project first.
 
+## Import a plan (create the tasks)
+```bash
+northstar plan import <project> path/to/plan.md
+```
+Launches an interactive session that grills you over the whole plan, then creates Plane **Draft** tasks
+with acceptance criteria, citations, and dependency links. Run it again for each new plan as the project
+grows (idempotent — it won't duplicate tasks). Then move the ready tasks Draft → Ready to Dev.
+
 ## Run (tmux, detached)
 ```bash
 northstar start <project>      # runs the daemon in tmux session ns-<project>

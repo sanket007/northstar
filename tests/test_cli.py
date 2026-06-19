@@ -71,3 +71,13 @@ def test_start_uses_load_project(tmp_path, monkeypatch):
     result = runner.invoke(cli.app, ["start", "acme"])
     assert result.exit_code == 0
     assert seen["env"]["PLANE_API_KEY"] == "K"
+
+
+def test_plan_import_command_invokes_run_import(monkeypatch):
+    import northstar.cli as cli; importlib.reload(cli)
+    seen = {}
+    monkeypatch.setattr(cli.importer, "run_import",
+                        lambda name, plan_path, **kw: seen.update(name=name, plan=plan_path))
+    result = runner.invoke(cli.app, ["plan", "import", "acme", "plan.md"])
+    assert result.exit_code == 0
+    assert seen == {"name": "acme", "plan": "plan.md"}
