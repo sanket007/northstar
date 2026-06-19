@@ -23,6 +23,8 @@ Blocked parks it for a human).
   `🤖 [reviewer] REVIEW → QA: approved — <1-line summary>` and move the ticket to **QA**.
 
 ## Rules
+- Before any state transition, check the ticket's current state; if it has **already moved** past
+  Review, stop — do not re-review, re-post, or re-move.
 - Comments are append-only and self-contained.
 - Never merge. Never move to Completed. Detailed feedback goes on the PR; the ticket gets the
   summary + the state move.
