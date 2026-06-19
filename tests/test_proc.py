@@ -26,3 +26,9 @@ def test_run_missing_binary_returns_127_not_raise():
     res = run(["this-binary-truly-does-not-exist-xyz123"])
     assert res.returncode == 127
     assert res.ok is False
+
+
+def test_run_timeout_returns_124_not_hang():
+    res = run(["sleep", "5"], timeout=0.2)
+    assert res.returncode == 124
+    assert res.ok is False

@@ -59,28 +59,32 @@ def _first_line(res) -> str:
     return text.splitlines()[0] if text else "failed"
 
 
+_INSTALL_TIMEOUT = 300  # seconds per command — a stuck install fails (124) instead of hanging
+
+
 def install_all(runner=run, log=print) -> list[tuple[str, bool, str]]:
     results: list[tuple[str, bool, str]] = []
+    t = _INSTALL_TIMEOUT
     for src in marketplaces():
         log(f"  → marketplace add {src}")
-        runner(["claude", "plugin", "marketplace", "add", src])
+        runner(["claude", "plugin", "marketplace", "add", src], timeout=t)
     log("  → marketplace update (refreshing catalogs to latest)")
-    runner(["claude", "plugin", "marketplace", "update"])
+    runner(["claude", "plugin", "marketplace", "update"], timeout=t)
     present = installed_plugins(runner=runner)
     for p in PLUGINS:
         ref = f"{p.name}@{p.marketplace}"
         if p.name not in present:
             log(f"  → installing {ref}")
-            runner(["claude", "plugin", "install", ref, "--scope", "user"])
+            runner(["claude", "plugin", "install", ref, "--scope", "user"], timeout=t)
         else:
             log(f"  → {p.name} already present; updating")
-        upd = runner(["claude", "plugin", "update", ref, "--scope", "user"])
+        upd = runner(["claude", "plugin", "update", ref, "--scope", "user"], timeout=t)
         log(f"    {'✓' if upd.ok else '⚠'} {p.name}"
             + ("" if upd.ok else f": {_first_line(upd)}"))
         results.append((p.name, upd.ok, "plugin"))
     for n in NATIVE:
         log(f"  → installing {n.name} (native installer)")
-        res = runner(n.cmd, shell=True)
+        res = runner(n.cmd, shell=True, timeout=t)
         log(f"    {'✓' if res.ok else '⚠'} {n.name}"
             + ("" if res.ok else f": {_first_line(res)} — run manually: {n.cmd}"))
         results.append((n.name, res.ok, "native"))
