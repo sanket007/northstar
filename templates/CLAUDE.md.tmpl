@@ -10,8 +10,12 @@ before any task.
 ## Memory layer (REQUIRED)
 - Durable knowledge lives in `docs/` as markdown. Before every commit, append a short, cited entry
   (what changed, why, ticket id, PR link). The commit hook blocks commits with no `docs/` update.
-- Each session is fresh and stateless: reconstruct context from the Plane ticket + full comment
-  trail + PR thread + `docs/` + git history. Never act on the latest comment alone.
+
+## Context hydration (every session)
+Each session is fresh and stateless. Before acting, reconstruct context from: the Plane ticket, its
+comment trail, the GitHub PR thread, the repo `docs/` memory, and git history. Read the **latest**
+comment and any comments **since your last state move**; skim earlier trail only if needed. Act on the
+latest comment for what to do next; use the rest for how.
 
 ## Commands
 - Lint: `npm run lint`
