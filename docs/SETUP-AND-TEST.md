@@ -193,6 +193,14 @@ northstar logs sandbox -f      # tmux: attaches live (Ctrl-b then d to detach); 
 ```
 Now watch **the Plane board** and **GitHub**.
 
+> **Activity logging.** Every command northstar runs and every external call it makes
+> (Plane, GitHub, git, claude) is printed as a readable line, e.g.
+> `12:30:01 northstar › plane ✓ POST /…/states/ → 201 (0.34s)` or
+> `12:30:05 northstar › exec $ claude plugin install … → ✓ ok (4.1s)`.
+> These lines go to **stderr** (and into `northstar logs` for the daemon). Secrets
+> (API keys, tokens) are redacted automatically. To quiet them set `NORTHSTAR_QUIET=1`;
+> for extra detail (full URLs) set `NORTHSTAR_DEBUG=1`.
+
 ---
 
 ## 10. What success looks like

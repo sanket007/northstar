@@ -3,6 +3,8 @@ from dataclasses import dataclass
 import httpx
 import time
 
+from orchestrator import obs
+
 _RETRY_STATUS = {429, 500, 502, 503, 504}
 
 
@@ -34,14 +36,19 @@ class PlaneClient:
     def _send(self, method, url, **kw):
         delay = 0.5
         for attempt in range(self._max_retries):
+            started = time.monotonic()
             try:
                 resp = self._http.request(method, url, **kw)
-            except (httpx.ConnectError, httpx.TimeoutException):
+            except (httpx.ConnectError, httpx.TimeoutException) as e:
+                obs.http_error(method, url, e)
                 if attempt == self._max_retries - 1:
                     raise
+                obs.http_retry(method, url, None, attempt + 1, self._max_retries, delay)
                 self._sleep(delay); delay *= 2; continue
             if resp.status_code in _RETRY_STATUS and attempt < self._max_retries - 1:
+                obs.http_retry(method, url, resp.status_code, attempt + 1, self._max_retries, delay)
                 self._sleep(delay); delay *= 2; continue
+            obs.http_done(method, url, resp.status_code, started)
             resp.raise_for_status()
             return resp
         resp.raise_for_status()
@@ -55,7 +62,10 @@ class PlaneClient:
             body = resp.json()
             out.extend(body.get("results", []))
             cursor = body.get("next_cursor")
-            if not cursor:
+            # Plane always returns next_cursor, even on the last page — `next_page_results`
+            # is the real "more pages?" flag. Also stop if the cursor stops advancing, so a
+            # missing/sticky flag can never cause an infinite refetch loop.
+            if not body.get("next_page_results") or not cursor or cursor == params.get("cursor"):
                 return out
             params["cursor"] = cursor
 

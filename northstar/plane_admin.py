@@ -1,6 +1,11 @@
 from __future__ import annotations
 import sys
+import time
 import httpx
+
+from orchestrator import obs
+
+_RETRY_STATUS = {429, 500, 502, 503, 504}
 
 CANONICAL_GROUPS = {
     "Draft": "backlog",
@@ -16,23 +21,67 @@ CANONICAL_ORDER = ["Draft", "Ready to Dev", "In Progress", "Review",
                    "QA", "Blocked", "Completed", "Deployed"]
 
 
+def _retry_after(header_value, fallback) -> float:
+    """Seconds to wait before retry — Plane's Retry-After header if numeric, else the backoff."""
+    if header_value:
+        try:
+            return max(float(header_value), fallback)
+        except (TypeError, ValueError):
+            pass
+    return fallback
+
+
+def _plane_reason(response) -> str:
+    """Pull the human-readable reason out of a Plane error response body."""
+    try:
+        body = response.json()
+    except Exception:
+        text = (response.text or "").strip()
+        return text[:300] if text else "no response body"
+    if isinstance(body, dict):
+        for key in ("error", "detail", "message", "name", "identifier", "non_field_errors"):
+            if key in body and body[key]:
+                val = body[key]
+                return "; ".join(val) if isinstance(val, list) else str(val)
+        # fall back to the first field's message (DRF-style {"field": ["msg"]})
+        for key, val in body.items():
+            if val:
+                msg = "; ".join(val) if isinstance(val, list) else str(val)
+                return f"{key}: {msg}"
+    return str(body)[:300]
+
+
 class PlaneAdmin:
-    def __init__(self, base_url, api_key, workspace_slug, client: httpx.Client | None = None):
+    def __init__(self, base_url, api_key, workspace_slug, client: httpx.Client | None = None,
+                 sleep=time.sleep, max_retries=4):
         self._base = f"{base_url.rstrip('/')}/api/v1/workspaces/{workspace_slug}"
         self._http = client or httpx.Client(timeout=30)
         self._http.headers.update({"X-API-Key": api_key, "Content-Type": "application/json"})
+        self._sleep = sleep
+        self._max_retries = max_retries
 
     def _request(self, method, url, **kw):
-        try:
-            r = self._http.request(method, url, **kw)
-            r.raise_for_status()
+        delay = 1.0
+        for attempt in range(self._max_retries):
+            started = time.monotonic()
+            try:
+                r = self._http.request(method, url, **kw)
+            except (httpx.ConnectError, httpx.TimeoutException) as e:
+                obs.http_error(method, url, e)
+                if attempt == self._max_retries - 1:
+                    raise RuntimeError(f"Plane API unreachable at {url}: {e}") from e
+                obs.http_retry(method, url, None, attempt + 1, self._max_retries, delay)
+                self._sleep(delay); delay *= 2; continue
+            if r.status_code in _RETRY_STATUS and attempt < self._max_retries - 1:
+                # 429s carry a Retry-After (seconds); honor it when present, else back off.
+                wait = _retry_after(r.headers.get("Retry-After"), delay)
+                obs.http_retry(method, url, r.status_code, attempt + 1, self._max_retries, wait)
+                self._sleep(wait); delay *= 2; continue
+            obs.http_done(method, url, r.status_code, started)
+            if r.is_error:
+                raise RuntimeError(
+                    f"Plane API returned {r.status_code} at {url} — {_plane_reason(r)}")
             return r
-        except httpx.HTTPStatusError as e:
-            raise RuntimeError(
-                f"Plane API returned {e.response.status_code} at {url} — "
-                "check the API key, base URL, and project permissions") from e
-        except (httpx.ConnectError, httpx.TimeoutException) as e:
-            raise RuntimeError(f"Plane API unreachable at {url}: {e}") from e
 
     def create_project(self, name, identifier, description="") -> dict:
         if not identifier or not identifier.isalnum() or identifier != identifier.upper() or len(identifier) > 12:
@@ -51,7 +100,10 @@ class PlaneAdmin:
             body = r.json()
             out.extend(body.get("results", []))
             cursor = body.get("next_cursor")
-            if not cursor:
+            # Plane always returns next_cursor, even on the last page — `next_page_results`
+            # is the real "more pages?" flag. Also stop if the cursor stops advancing, so a
+            # missing/sticky flag can never cause an infinite refetch loop.
+            if not body.get("next_page_results") or not cursor or cursor == params.get("cursor"):
                 return out
             params["cursor"] = cursor
 

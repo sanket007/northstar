@@ -29,14 +29,28 @@ def test_create_project_posts_and_returns_id():
 @respx.mock
 def test_list_states_paginates():
     route = respx.get(f"{WPREFIX}/projects/p1/states/")
+    # Real Plane always returns a non-null next_cursor; `next_page_results` is the real
+    # last-page signal. The mock reflects that so it would catch the infinite-loop bug.
     route.side_effect = [
         httpx.Response(200, json={"results": [{"id": "s1", "name": "Backlog", "group": "backlog"}],
-                                  "next_cursor": "C"}),
+                                  "next_cursor": "20:1:0", "next_page_results": True}),
         httpx.Response(200, json={"results": [{"id": "s2", "name": "Done", "group": "completed"}],
-                                  "next_cursor": None}),
+                                  "next_cursor": "20:2:0", "next_page_results": False}),
     ]
     names = [s["name"] for s in admin().list_states("p1")]
     assert names == ["Backlog", "Done"]
+
+
+@respx.mock
+def test_list_states_terminates_when_cursor_never_nulls():
+    # Defensive: even if next_page_results is missing/sticky, a non-advancing cursor must stop.
+    route = respx.get(f"{WPREFIX}/projects/p1/states/")
+    route.side_effect = [
+        httpx.Response(200, json={"results": [{"id": "s1", "name": "Backlog", "group": "backlog"}],
+                                  "next_cursor": "20:1:0"}),
+    ] * 10
+    names = [s["name"] for s in admin().list_states("p1")]
+    assert names == ["Backlog"]  # one page, no infinite refetch
 
 
 @respx.mock

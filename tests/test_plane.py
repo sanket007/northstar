@@ -39,11 +39,14 @@ def test_list_issues_in_state_parses_and_filters():
 @respx.mock
 def test_list_comments_paginates():
     route = respx.get(f"{PREFIX}/work-items/i1/comments/")
+    # Real Plane always returns a non-null next_cursor; `next_page_results` ends pagination.
     route.side_effect = [
         httpx.Response(200, json={"results": [{"id": "c1", "comment_html": "<p>a</p>",
-                                               "created_at": "t1"}], "next_cursor": "CUR"}),
+                                               "created_at": "t1"}],
+                                  "next_cursor": "20:1:0", "next_page_results": True}),
         httpx.Response(200, json={"results": [{"id": "c2", "comment_html": "<p>b</p>",
-                                               "created_at": "t2"}], "next_cursor": None}),
+                                               "created_at": "t2"}],
+                                  "next_cursor": "20:2:0", "next_page_results": False}),
     ]
     comments = make_client().list_comments("i1")
     assert [c.id for c in comments] == ["c1", "c2"]
