@@ -25,13 +25,15 @@ GitHub PR — including a second task that **waits for its dependency**. Budget 
 ### Tools (on the machine running northstar)
 ```bash
 # macOS (Homebrew)
-brew install python@3.11 git gh tmux node
+brew install python@3.11 git gh node
 curl -LsSf https://astral.sh/uv/install.sh | sh        # uv / uvx (runs the Plane MCP server)
 
 # Linux (apt) — equivalents
-# sudo apt install -y python3.11 python3.11-venv git tmux nodejs npm
+# sudo apt install -y python3.11 python3.11-venv git nodejs npm
 # gh: https://github.com/cli/cli#installation ; uv: the curl line above
 ```
+- **tmux** is **optional** — for the live-attach process backend. If you skip it, `northstar init` will
+  offer the built-in **detached** backend (no extra dependency; logs via file). You choose at init.
 Install **Claude Code** (the `claude` CLI) per https://claude.com/code and log in with your subscription.
 
 ### Accounts / services
@@ -75,6 +77,9 @@ northstar init            # installs your skill stack to latest + creates ~/.nor
 `init` installs superpowers, frontend-design, playwright, karpathy-guidelines via `claude plugin`, and
 runs the caveman/grill-me installers. If grill-me's installer needs interaction, follow its prompt (or
 run `npx --yes skills@latest add mattpocock/skills` once yourself); `doctor` will confirm.
+
+`init` will ask about the process backend if tmux isn't installed (or pass
+`northstar init --backend tmux|detached`).
 
 ---
 
@@ -182,9 +187,9 @@ On the Plane board, drag **both** tasks from **Draft** to **Ready to Dev**.
 ## 9. Run it
 
 ```bash
-northstar start sandbox        # launches the daemon in a tmux session ns-sandbox
+northstar start sandbox        # launches the daemon (tmux session ns-sandbox, or a detached process)
 northstar status               # shows sandbox as running
-northstar logs sandbox -f      # attach to the live session (Ctrl-b then d to detach)
+northstar logs sandbox -f      # tmux: attaches live (Ctrl-b then d to detach); detached: tails the log
 ```
 Now watch **the Plane board** and **GitHub**.
 

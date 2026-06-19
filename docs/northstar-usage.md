@@ -15,7 +15,12 @@ northstar doctor            # check prerequisites
 northstar init             # install skills to latest + create ~/.northstar
 ```
 Prerequisites: Python 3.11+, git, GitHub CLI (`gh auth login`), Claude Code (`claude`, logged in),
-`uv`/`uvx`, tmux, and Node/`npx` (for the grill-me skill). `doctor` reports each.
+`uv`/`uvx`, and Node/`npx` (for the grill-me skill); **tmux is optional** (only for the live-attach
+backend — see below). `doctor` reports each.
+
+northstar picks a **process backend** at init: `tmux` (live-attach, needs tmux) or `detached`
+(no dependency, logs via file). Override with `northstar init --backend tmux|detached`. Both survive the
+terminal closing; neither survives a reboot.
 
 ## Add a project
 ```bash
@@ -39,10 +44,10 @@ Launches an interactive session that grills you over the whole plan, then create
 with acceptance criteria, citations, and dependency links. Run it again for each new plan as the project
 grows (idempotent — it won't duplicate tasks). Then move the ready tasks Draft → Ready to Dev.
 
-## Run (tmux, detached)
+## Run
 ```bash
-northstar start <project>      # runs the daemon in tmux session ns-<project>
+northstar start <project>      # runs the daemon (tmux session ns-<project>, or a detached process)
 northstar status               # which projects are running
-northstar logs <project> -f    # attach to the live session (Ctrl-b d to detach)
+northstar logs <project> -f    # tmux backend: attaches live (Ctrl-b d to detach); detached: tails the log
 northstar stop <project>
 ```

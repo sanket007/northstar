@@ -39,3 +39,12 @@ def test_load_project_reads_each_file_once(tmp_path, monkeypatch):
     assert rt.repo_dir == __import__("pathlib").Path("/tmp/acme")
     assert rt.plane_env == {"PLANE_API_KEY": "K", "PLANE_BASE_URL": "https://x", "PLANE_WORKSPACE_SLUG": "w"}
     assert rt.cfg_path == p.project_config_path("acme")
+
+
+def test_backend_default_and_roundtrip(tmp_path, monkeypatch):
+    p = reload_paths(tmp_path, monkeypatch)
+    p.ensure_dirs()
+    assert p.get_backend() == "tmux"          # default when unset
+    p.set_backend("detached")
+    assert p.get_backend() == "detached"
+    assert p.machine_config_path() == p.home() / "config.yaml"
