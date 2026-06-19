@@ -56,3 +56,18 @@ def test_project_add_new_plane_project_builds_inputs(tmp_path, monkeypatch):
     inp = captured["inp"]
     assert inp.plane_new_project is True
     assert inp.plane_project_name == "Acme" and inp.plane_identifier == "ACME"
+
+
+def test_start_uses_load_project(tmp_path, monkeypatch):
+    monkeypatch.setenv("NORTHSTAR_HOME", str(tmp_path / ".northstar"))
+    import northstar.paths as paths; importlib.reload(paths)
+    paths.ensure_dirs(); paths.register_project("acme", {"repo_dir": str(tmp_path / "repo")})
+    paths.project_config_path("acme").write_text(
+        "plane_api_key: K\nplane_base_url: https://x\nplane_workspace_slug: w\nrepo_dir: " + str(tmp_path / "repo") + "\n")
+    import northstar.cli as cli; importlib.reload(cli)
+    seen = {}
+    monkeypatch.setattr(cli.supervisor, "start",
+                        lambda name, repo_dir, plane_env, **kw: seen.update(repo_dir=repo_dir, env=plane_env))
+    result = runner.invoke(cli.app, ["start", "acme"])
+    assert result.exit_code == 0
+    assert seen["env"]["PLANE_API_KEY"] == "K"
