@@ -33,3 +33,19 @@ def test_do_init_installs_and_creates_dirs_on_success(tmp_path, monkeypatch):
     import northstar.paths as paths
     assert paths.home().is_dir()
     assert (paths.home() / "plane-mcp.json").exists()
+
+
+def test_do_init_sets_backend(tmp_path, monkeypatch):
+    monkeypatch.setenv("NORTHSTAR_HOME", str(tmp_path / ".northstar"))
+    monkeypatch.setenv("NORTHSTAR_ASSETS_DIR", str(tmp_path / "assets"))
+    (tmp_path / "assets" / "templates").mkdir(parents=True)
+    (tmp_path / "assets" / "plane-mcp.json").write_text("{}")
+    import northstar.initcmd as initcmd; initcmd = importlib.reload(initcmd)
+    from northstar.doctor import Check
+    monkeypatch.setattr(initcmd, "run_checks", lambda runner, deep=False: [Check("git", True, True, "ok", "")])
+    monkeypatch.setattr(initcmd, "install_all", lambda runner: [])
+    rc = initcmd.do_init(runner=lambda *a, **k: __import__("northstar.proc", fromlist=["CommandResult"]).CommandResult(0, "", ""),
+                         backend="detached")
+    assert rc == 0
+    import northstar.paths as paths; importlib.reload(paths)
+    assert paths.get_backend() == "detached"

@@ -25,13 +25,15 @@ GitHub PR — including a second task that **waits for its dependency**. Budget 
 ### Tools (on the machine running northstar)
 ```bash
 # macOS (Homebrew)
-brew install python@3.11 git gh tmux node
+brew install python@3.11 git gh node
 curl -LsSf https://astral.sh/uv/install.sh | sh        # uv / uvx (runs the Plane MCP server)
 
 # Linux (apt) — equivalents
-# sudo apt install -y python3.11 python3.11-venv git tmux nodejs npm
+# sudo apt install -y python3.11 python3.11-venv git nodejs npm
 # gh: https://github.com/cli/cli#installation ; uv: the curl line above
 ```
+- **tmux** is **optional** — for the live-attach process backend. If you skip it, `northstar init` will
+  offer the built-in **detached** backend (no extra dependency; logs via file). You choose at init.
 Install **Claude Code** (the `claude` CLI) per https://claude.com/code and log in with your subscription.
 
 ### Accounts / services
@@ -75,6 +77,9 @@ northstar init            # installs your skill stack to latest + creates ~/.nor
 `init` installs superpowers, frontend-design, playwright, karpathy-guidelines via `claude plugin`, and
 runs the caveman/grill-me installers. If grill-me's installer needs interaction, follow its prompt (or
 run `npx --yes skills@latest add mattpocock/skills` once yourself); `doctor` will confirm.
+
+`init` will ask about the process backend if tmux isn't installed (or pass
+`northstar init --backend tmux|detached`).
 
 ---
 

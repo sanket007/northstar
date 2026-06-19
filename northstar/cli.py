@@ -2,7 +2,7 @@ from __future__ import annotations
 from pathlib import Path
 import typer
 
-from northstar import doctor, project, supervisor, paths, importer
+from northstar import doctor, project, supervisor, paths, importer, proc
 from northstar.initcmd import do_init
 
 app = typer.Typer(help="northstar — autonomous dev orchestrator CLI", no_args_is_help=True)
@@ -26,9 +26,26 @@ def doctor_cmd(deep: bool = typer.Option(False, "--deep")):
 
 
 @app.command()
-def init(deep: bool = typer.Option(False, "--deep")):
+def init(deep: bool = typer.Option(False, "--deep"),
+         backend: str = typer.Option("auto", "--backend",
+                                      help="process backend: auto|tmux|detached")):
     """Set up this machine (checks + install skills to latest)."""
-    raise typer.Exit(do_init(deep=deep))
+    resolved = backend
+    if backend == "auto":
+        if proc.run(["tmux", "-V"]).ok:
+            resolved = "tmux"
+        else:
+            typer.echo(
+                "tmux not found.\n"
+                "  • tmux: live-attach to the running session (needs tmux installed)\n"
+                "  • detached: no extra dependency; logs via file (no live attach)\n"
+                "  Both survive your terminal closing; neither survives a reboot.")
+            if typer.confirm("Use the built-in detached backend?", default=True):
+                resolved = "detached"
+            else:
+                typer.echo("Aborted. Install tmux, or re-run with --backend detached.")
+                raise typer.Exit(1)
+    raise typer.Exit(do_init(deep=deep, backend=resolved))
 
 
 @project_app.command("list")
