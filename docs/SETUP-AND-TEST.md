@@ -187,9 +187,9 @@ On the Plane board, drag **both** tasks from **Draft** to **Ready to Dev**.
 ## 9. Run it
 
 ```bash
-northstar start sandbox        # launches the daemon in a tmux session ns-sandbox
+northstar start sandbox        # launches the daemon (tmux session ns-sandbox, or a detached process)
 northstar status               # shows sandbox as running
-northstar logs sandbox -f      # attach to the live session (Ctrl-b then d to detach)
+northstar logs sandbox -f      # tmux: attaches live (Ctrl-b then d to detach); detached: tails the log
 ```
 Now watch **the Plane board** and **GitHub**.
 

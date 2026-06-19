@@ -74,8 +74,11 @@ def _detached_start(project: str, repo_dir: Path, plane_env: dict,
     cmd = [sys.executable, "-m", "orchestrator", "--config", str(cfg)]
     env = {**os.environ, **plane_env}
     logf = open(log, "a")
-    proc = spawn(cmd, cwd=str(repo_dir), env=env, stdout=logf,
-                 stderr=subprocess.STDOUT, start_new_session=True)
+    try:
+        proc = spawn(cmd, cwd=str(repo_dir), env=env, stdout=logf,
+                     stderr=subprocess.STDOUT, start_new_session=True)
+    finally:
+        logf.close()  # the child keeps its own dup'd fd; the parent's copy is not needed
     _pid_path(project).write_text(str(proc.pid))
 
 

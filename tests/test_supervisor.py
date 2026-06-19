@@ -30,16 +30,18 @@ def test_start_builds_tmux_new_session_with_env_and_config(tmp_path, monkeypatch
     assert "pipe-pane" in joined
 
 
-def test_stop_kills_session():
-    from northstar import supervisor
+def test_stop_kills_session(monkeypatch):
+    from northstar import supervisor, paths
+    monkeypatch.setattr(paths, "get_backend", lambda: "tmux")
     calls = []
     runner = lambda cmd, **kw: (calls.append(" ".join(cmd)), CommandResult(0, "", ""))[1]
     supervisor.stop("acme", runner=runner)
     assert "tmux kill-session -t ns-acme" in calls[0]
 
 
-def test_status_reports_running_flag():
-    from northstar import supervisor
+def test_status_reports_running_flag(monkeypatch):
+    from northstar import supervisor, paths
+    monkeypatch.setattr(paths, "get_backend", lambda: "tmux")
     def runner(cmd, **kw):
         # has-session ok only for ns-acme
         c = " ".join(cmd)
