@@ -2,7 +2,7 @@ from __future__ import annotations
 from pathlib import Path
 import typer
 
-from northstar import doctor, project, supervisor, paths
+from northstar import doctor, project, supervisor, paths, importer
 from northstar.initcmd import do_init
 
 app = typer.Typer(help="northstar — autonomous dev orchestrator CLI", no_args_is_help=True)
@@ -112,3 +112,13 @@ def status():
 def logs(name: str, follow: bool = typer.Option(False, "-f", "--follow")):
     import subprocess
     subprocess.run(supervisor.logs_command(name, follow))
+
+
+plan_app = typer.Typer(help="import plans into Plane")
+app.add_typer(plan_app, name="plan")
+
+
+@plan_app.command("import")
+def plan_import(project: str, plan_path: str):
+    """Grill a plan and create Plane Draft tasks (interactive)."""
+    importer.run_import(project, plan_path)
