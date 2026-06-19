@@ -25,6 +25,10 @@ def log_path(name: str) -> Path:
     return logs_dir() / f"{name}.log"
 
 
+def machine_config_path() -> Path:
+    return home() / "config.yaml"
+
+
 def registry_path() -> Path:
     return home() / "registry.yaml"
 
@@ -32,6 +36,28 @@ def registry_path() -> Path:
 def ensure_dirs() -> None:
     for d in (home(), projects_dir(), logs_dir()):
         d.mkdir(parents=True, exist_ok=True)
+
+
+def load_machine_config() -> dict:
+    p = machine_config_path()
+    if not p.exists():
+        return {}
+    return yaml.safe_load(p.read_text()) or {}
+
+
+def save_machine_config(cfg: dict) -> None:
+    ensure_dirs()
+    machine_config_path().write_text(yaml.safe_dump(cfg, sort_keys=True))
+
+
+def get_backend() -> str:
+    return load_machine_config().get("process_backend", "tmux")
+
+
+def set_backend(backend: str) -> None:
+    cfg = load_machine_config()
+    cfg["process_backend"] = backend
+    save_machine_config(cfg)
 
 
 def load_registry() -> dict:
