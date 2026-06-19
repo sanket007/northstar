@@ -161,12 +161,12 @@ class _C:
 
 def test_rework_count_counts_only_reviewer_qa_bounces():
     comments = [
-        _C("🤖 [builder] Ready to Dev → In Progress: starting"),   # not a bounce
-        _C("🤖 [builder] context loaded"),                          # not a bounce
-        _C("🤖 [reviewer] Review → In Progress: changes requested"),  # bounce
-        _C("🤖 [reviewer] Review → QA: approved"),                  # not a bounce
-        _C("🤖 [qa] QA → In Progress: QA failed"),                 # bounce
-        _C("🤖 [qa] QA → Completed: merged"),                      # not a bounce
+        _C("**[builder] Ready to Dev → In Progress** — starting"),   # not a bounce
+        _C("**[builder] context loaded**"),                          # not a bounce
+        _C("**[reviewer] Review → In Progress** — changes requested"),  # bounce
+        _C("**[reviewer] Review → QA** — approved"),                  # not a bounce
+        _C("**[qa] QA → In Progress** — QA failed"),                 # bounce
+        _C("**[qa] QA → Completed** — merged"),                      # not a bounce
     ]
     assert rework_count(comments) == 2
 

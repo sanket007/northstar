@@ -20,17 +20,18 @@ Use the `review` skill to judge the PR against (a) every acceptance criterion an
   code is not enough.
 - Post detailed, line-level findings **on the PR** via `gh pr review`.
 - Anything touching **security, architecture, or data migrations** is a hard stop for human attention:
-  flag it, move the ticket to **Blocked** with `🤖 [reviewer] Review → BLOCKED: needs human review — <reason>`,
+  flag it, move the ticket to **Blocked** with
+  `**[reviewer] Review → Blocked** — needs human review: <reason>`,
   and stop. Do not leave it in Review (Review is actionable and would be re-reviewed every poll, causing
   an infinite loop — Blocked parks it for a human).
 
 ## Step 4 — Route (be decisive — reworks are capped)
 - **Changes needed:** post a SHORT summary on the ticket
-  `🤖 [reviewer] Review → In Progress: changes requested — <summary>; details on PR <url>`,
+  `**[reviewer] Review → In Progress** — changes requested: <summary> (details on PR <url>)`,
   then move the ticket to **In Progress**. List every required change at once — the orchestrator caps
   rework rounds, so don't drip-feed nitpicks across cycles.
 - **Approved:** `gh pr review --approve`, comment
-  `🤖 [reviewer] Review → QA: approved — <1-line summary>`, and move the ticket to **QA**.
+  `**[reviewer] Review → QA** — approved: <1-line summary>`, and move the ticket to **QA**.
 
 ## Safety (hard limits)
 - Never merge, never push code, never move to Completed.

@@ -33,4 +33,19 @@ within this repo and the ticket's scope.
 
 ## Workflow
 Your specific role (builder / reviewer / QA) and its steps are provided in the session's system
-prompt. Honor the board state machine and the `🤖 [role] FROM → TO` comment convention.
+prompt. Honor the board state machine.
+
+## Comment format (no emojis, ever)
+Ticket comments are plain Markdown — readable, scannable, and lean. Never use emojis anywhere.
+Shape every comment as:
+
+```
+**[<role>] <From State> → <To State>** — one-line summary
+
+PR: <url>            (only when there is one)
+- short bullet of a concrete change or result
+- another bullet only if it adds signal
+```
+
+Use the exact board state names (e.g. `Ready to Dev → In Progress`). For a note that isn't a state
+change, use `**[<role>] <label>** — …`. Omit obvious detail; a one-line header is often enough.

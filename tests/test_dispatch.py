@@ -92,7 +92,8 @@ def test_dispatch_releases_ownership_and_blocks_on_session_error(tmp_path):
     assert len(fake_plane.comments) == 1
     issue_id, body = fake_plane.comments[0]
     assert issue_id == "i1"
-    assert "BLOCKED" in body
+    assert "blocked" in body.lower()
+    assert "🤖" not in body and "\U0001f916" not in body  # no emojis in posted comments
     assert fake_plane.states == [("i1", "s-blocked")]
 
 
@@ -111,7 +112,7 @@ def test_dispatch_releases_and_blocks_on_exception(tmp_path):
 
     assert own.owns("i1") is False
     assert len(fake_plane.comments) == 1
-    assert "BLOCKED" in fake_plane.comments[0][1]
+    assert "blocked" in fake_plane.comments[0][1].lower()
     assert fake_plane.states == [("i1", "s-blocked")]
 
 
@@ -121,9 +122,9 @@ def test_rework_cap_blocks_thrashing_ticket_without_running(tmp_path):
     own.claim("i1")
     # three reviewer/QA bounces already on the trail → at the cap
     fake_plane = FakePlane(comments=[
-        "🤖 [reviewer] Review → In Progress: changes requested",
-        "🤖 [qa] QA → In Progress: QA failed",
-        "🤖 [reviewer] Review → In Progress: changes requested again",
+        "**[reviewer] Review → In Progress** — changes requested",
+        "**[qa] QA → In Progress** — QA failed",
+        "**[reviewer] Review → In Progress** — changes requested again",
     ])
     ran = []
 

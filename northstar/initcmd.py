@@ -28,5 +28,5 @@ def do_init(runner=run, deep=False, backend="tmux") -> int:
     failed = [name for name, o, _ in results if not o]
     print(f"• Done — {ok}/{len(results)} skills ready; backend: {backend}.")
     if failed:
-        print(f"  ⚠ needs attention: {', '.join(failed)} (see the lines above).")
+        print(f"  WARN needs attention: {', '.join(failed)} (see the lines above).")
     return 0

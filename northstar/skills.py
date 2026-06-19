@@ -79,13 +79,13 @@ def install_all(runner=run, log=print) -> list[tuple[str, bool, str]]:
         else:
             log(f"  → {p.name} already present; updating")
         upd = runner(["claude", "plugin", "update", ref, "--scope", "user"], timeout=t)
-        log(f"    {'✓' if upd.ok else '⚠'} {p.name}"
+        log(f"    {'ok ' if upd.ok else 'WARN'} {p.name}"
             + ("" if upd.ok else f": {_first_line(upd)}"))
         results.append((p.name, upd.ok, "plugin"))
     for n in NATIVE:
         log(f"  → installing {n.name} (native installer)")
         res = runner(n.cmd, shell=True, timeout=t)
-        log(f"    {'✓' if res.ok else '⚠'} {n.name}"
+        log(f"    {'ok ' if res.ok else 'WARN'} {n.name}"
             + ("" if res.ok else f": {_first_line(res)} — run manually: {n.cmd}"))
         results.append((n.name, res.ok, "native"))
     return results

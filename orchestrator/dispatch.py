@@ -19,7 +19,7 @@ def make_dispatch(cfg: Config, ownership: Ownership, *, run=run_session,
 
     def _block(issue_id: str, reason: str) -> None:
         try:
-            plane.add_comment(issue_id, f"\U0001f916 [orchestrator] → BLOCKED: {reason}")
+            plane.add_comment(issue_id, f"**[orchestrator] → Blocked** — {reason}")
             plane.set_state(issue_id, cfg.state_ids["Blocked"])
         except Exception:
             pass
@@ -64,8 +64,8 @@ def make_dispatch(cfg: Config, ownership: Ownership, *, run=run_session,
                         obs.info("orchestrator", f"main RED after merging {issue.id}")
                         plane.add_comment(
                             issue.id,
-                            "\U0001f916 [orchestrator] ⚠ main is RED after this merge — "
-                            f"trunk verify failed:\n{detail}")
+                            "**[orchestrator] main is RED after this merge** — "
+                            f"trunk verify failed:\n\n{detail}")
                 except Exception as e:  # noqa: BLE001 — health check must not kill the daemon
                     obs.info("orchestrator", f"main-health check errored: {e}")
             ownership.release(issue.id)

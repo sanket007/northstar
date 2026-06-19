@@ -23,11 +23,11 @@ Before merging, make the PR current with trunk so a stale branch can't break `ma
 
 ## Step 4 — Route (be decisive — reworks are capped)
 - **Fails any criterion / integration:** post
-  `🤖 [qa] QA → In Progress: QA failed — <which criterion + evidence>` and move the ticket to
+  `**[qa] QA → In Progress** — QA failed: <which criterion + evidence>` and move the ticket to
   **In Progress** (rework loop).
 - **Passes all criteria, current with trunk, CI green:** merge with
   `superpowers:finishing-a-development-branch` (`gh pr merge <n> --squash --delete-branch`), then post
-  `🤖 [qa] QA → Completed: merged PR <url> — acceptance verified` and move the ticket to **Completed**.
+  `**[qa] QA → Completed** — merged PR <url>, acceptance verified` and move the ticket to **Completed**.
   (The orchestrator independently re-checks trunk health after your merge.)
 
 ## Safety (hard limits)
