@@ -54,3 +54,14 @@ def test_install_all_skips_install_for_present_plugin():
     assert any("plugin update superpowers@" in c for c in calls)
     # an absent plugin (frontend-design) IS installed
     assert any("plugin install frontend-design@" in c for c in calls)
+
+
+def test_install_all_logs_progress():
+    from northstar.proc import CommandResult
+    logs = []
+    runner = lambda cmd, **kw: CommandResult(0, "[]", "")
+    skills.install_all(runner=runner, log=logs.append)
+    joined = "\n".join(logs)
+    assert "marketplace add anthropics/claude-plugins-official" in joined
+    assert "marketplace update" in joined
+    assert "superpowers" in joined and "caveman" in joined

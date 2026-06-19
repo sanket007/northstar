@@ -8,6 +8,8 @@ from northstar.assets import copy_plane_mcp_to
 
 
 def do_init(runner=run, deep=False, backend="tmux") -> int:
+    print("northstar init")
+    print("• Checking prerequisites…")
     checks = run_checks(runner=runner, deep=deep)
     if not all_critical_ok(checks):
         failed = [c for c in checks if c.critical and not c.ok]
@@ -15,11 +17,16 @@ def do_init(runner=run, deep=False, backend="tmux") -> int:
         for c in failed:
             print(f"  ✗ {c.name}: {c.detail} — {c.fix}")
         return 1
+    print(f"• Creating {paths.home()} and copying the Plane MCP config…")
     paths.ensure_dirs()
     copy_plane_mcp_to(paths.home())
     paths.set_backend(backend)
+    print(f"• Process backend: {backend}")
+    print("• Installing the skill stack to latest (this can take a minute)…")
     results = install_all(runner=runner)
-    for name, ok, kind in results:
-        print(f"  {'✓' if ok else '⚠'} {name} ({kind})")
-    print(f"  process backend: {backend}")
+    ok = sum(1 for _, o, _ in results if o)
+    failed = [name for name, o, _ in results if not o]
+    print(f"• Done — {ok}/{len(results)} skills ready; backend: {backend}.")
+    if failed:
+        print(f"  ⚠ needs attention: {', '.join(failed)} (see the lines above).")
     return 0

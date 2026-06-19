@@ -54,20 +54,35 @@ def installed_plugins(runner=run) -> dict[str, str]:
     return {r["name"]: r.get("version", "") for r in rows if "name" in r}
 
 
-def install_all(runner=run) -> list[tuple[str, bool, str]]:
+def _first_line(res) -> str:
+    text = (res.stderr or res.stdout or "").strip()
+    return text.splitlines()[0] if text else "failed"
+
+
+def install_all(runner=run, log=print) -> list[tuple[str, bool, str]]:
     results: list[tuple[str, bool, str]] = []
     for src in marketplaces():
+        log(f"  → marketplace add {src}")
         runner(["claude", "plugin", "marketplace", "add", src])
+    log("  → marketplace update (refreshing catalogs to latest)")
     runner(["claude", "plugin", "marketplace", "update"])
     present = installed_plugins(runner=runner)
     for p in PLUGINS:
         ref = f"{p.name}@{p.marketplace}"
         if p.name not in present:
+            log(f"  → installing {ref}")
             runner(["claude", "plugin", "install", ref, "--scope", "user"])
+        else:
+            log(f"  → {p.name} already present; updating")
         upd = runner(["claude", "plugin", "update", ref, "--scope", "user"])
+        log(f"    {'✓' if upd.ok else '⚠'} {p.name}"
+            + ("" if upd.ok else f": {_first_line(upd)}"))
         results.append((p.name, upd.ok, "plugin"))
     for n in NATIVE:
+        log(f"  → installing {n.name} (native installer)")
         res = runner(n.cmd, shell=True)
+        log(f"    {'✓' if res.ok else '⚠'} {n.name}"
+            + ("" if res.ok else f": {_first_line(res)} — run manually: {n.cmd}"))
         results.append((n.name, res.ok, "native"))
     return results
 
