@@ -162,3 +162,15 @@ def test_create_project_rejects_bad_identifier():
     a = RecordingAdmin([])
     with pytest.raises(ValueError):
         a.create_project("Web", "web-1")
+
+
+@respx.mock
+def test_create_project_friendly_error_on_401():
+    respx.post(f"{WPREFIX}/projects/").mock(return_value=httpx.Response(401, json={}))
+    try:
+        admin().create_project("Web", "WEB")
+        assert False, "expected RuntimeError"
+    except RuntimeError as e:
+        assert "401" in str(e) and "projects/" in str(e)
+    except Exception as e:
+        assert False, f"expected RuntimeError, got {type(e).__name__}"
