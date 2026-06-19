@@ -79,11 +79,20 @@ def project_add(
     create_if_missing: bool = typer.Option(False, "--create"),
 ):
     """Add or link a project (sets up the Plane project + board)."""
+    import re
     if new_plane_project:
         if not plane_project_name:
             plane_project_name = typer.prompt("Plane project name")
         if not plane_identifier:
             plane_identifier = typer.prompt("Plane project identifier (short, UPPERCASE)")
+        # Normalize to Plane's rule (UPPERCASE, alphanumeric, <=12) so a hyphen/lowercase just works.
+        normalized = re.sub(r"[^A-Za-z0-9]", "", plane_identifier).upper()[:12]
+        if not normalized:
+            typer.echo("✗ Plane project identifier needs at least one letter/number.")
+            raise typer.Exit(1)
+        if normalized != plane_identifier:
+            typer.echo(f"  (using identifier '{normalized}')")
+        plane_identifier = normalized
     else:
         if not plane_project_id:
             plane_project_id = typer.prompt("Existing Plane project id")
@@ -94,7 +103,11 @@ def project_add(
         lint_cmd=lint_cmd, build_cmd=build_cmd, test_cmd=test_cmd,
         plane_new_project=new_plane_project, plane_project_name=plane_project_name,
         plane_identifier=plane_identifier)
-    meta = project.add_project(inp, create_if_missing=create_if_missing)
+    try:
+        meta = project.add_project(inp, create_if_missing=create_if_missing)
+    except (ValueError, RuntimeError) as e:
+        typer.echo(f"✗ {e}")
+        raise typer.Exit(1)
     typer.echo(f"added {name}: {meta['github_repo']}")
 
 
