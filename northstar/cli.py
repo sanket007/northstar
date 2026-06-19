@@ -76,6 +76,10 @@ def project_add(
     lint_cmd: str = typer.Option("npm run lint", prompt=True),
     build_cmd: str = typer.Option("npm run build", prompt=True),
     test_cmd: str = typer.Option("npm test", prompt=True),
+    enforce_formatting: bool = typer.Option(
+        True, "--formatting/--no-formatting",
+        prompt="Impose strong formatting + lint rules if the project language is supported "
+               "(JavaScript/TypeScript, Python, Go)?"),
     create_if_missing: bool = typer.Option(False, "--create"),
 ):
     """Add or link a project (sets up the Plane project + board)."""
@@ -101,6 +105,7 @@ def project_add(
         plane_workspace_slug=plane_workspace_slug, plane_project_id=plane_project_id,
         github_repo=github_repo, repo_dir=repo_dir,
         lint_cmd=lint_cmd, build_cmd=build_cmd, test_cmd=test_cmd,
+        enforce_formatting=enforce_formatting,
         plane_new_project=new_plane_project, plane_project_name=plane_project_name,
         plane_identifier=plane_identifier)
     try:
@@ -109,6 +114,11 @@ def project_add(
         typer.echo(f"✗ {e}")
         raise typer.Exit(1)
     typer.echo(f"added {name}: {meta['github_repo']}")
+    if enforce_formatting:
+        lang = meta.get("formatting")
+        typer.echo(f"  formatting: enforced for {lang} (config written, tooling installed, "
+                   "commit gate updated)" if lang
+                   else "  formatting: no supported language detected — skipped")
 
 
 @app.command()

@@ -1,0 +1,25 @@
+# Strong Go linting (golangci-lint v2). Formatting is enforced by gofumpt, which the
+# pre-commit gate also runs directly. Installed by `northstar project add`.
+version: "2"
+
+linters:
+  enable:
+    - errcheck      # unchecked errors
+    - govet         # suspicious constructs
+    - staticcheck   # bundles gosimple + stylecheck
+    - ineffassign   # ineffective assignments
+    - unused        # unused code
+    - revive        # golint successor, style + correctness
+    - misspell      # commonly misspelled words
+    - unconvert     # unnecessary type conversions
+    - gocritic      # opinionated diagnostics
+    - bodyclose     # unclosed HTTP response bodies
+
+formatters:
+  enable:
+    - gofumpt       # stricter gofmt
+    - goimports     # group + tidy imports
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

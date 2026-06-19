@@ -9,7 +9,7 @@ import yaml
 from northstar.plane_admin import PlaneAdmin
 from northstar.proc import run
 from northstar.assets import templates_dir
-from northstar import paths
+from northstar import paths, formatting
 
 
 def detect_build_commands(repo_dir: Path) -> dict:
@@ -87,13 +87,15 @@ class ProjectInputs:
     max_concurrency: int = 1
     base_branch: str = "main"
     max_reworks: int = 3
+    enforce_formatting: bool = True
     plane_new_project: bool = False
     plane_project_name: str = ""
     plane_identifier: str = ""
 
 
 def write_project_config(inp: "ProjectInputs", state_ids: dict, mcp_path: Path,
-                         project_id: str) -> Path:
+                         project_id: str, lint_cmd: str | None = None) -> Path:
+    lint = inp.lint_cmd if lint_cmd is None else lint_cmd
     cfg = {
         "plane_base_url": inp.plane_base_url,
         "plane_api_key": inp.plane_api_key,
@@ -109,8 +111,8 @@ def write_project_config(inp: "ProjectInputs", state_ids: dict, mcp_path: Path,
         "templates_dir": str(templates_dir()),
         "max_concurrency": inp.max_concurrency,
         "base_branch": inp.base_branch,
-        # trunk-health gate run after each merge: lint + build + test, whichever are set
-        "verify_cmd": " && ".join(c for c in (inp.lint_cmd, inp.build_cmd, inp.test_cmd) if c),
+        # trunk-health gate run after each merge: (format+)lint + build + test, whichever are set
+        "verify_cmd": " && ".join(c for c in (lint, inp.build_cmd, inp.test_cmd) if c),
         "max_reworks": inp.max_reworks,
         "state_ids": state_ids,
     }
@@ -142,10 +144,20 @@ def add_project(inp: "ProjectInputs", *, runner=run, create_if_missing=False, ad
         if not Path(inp.repo_dir).exists():
             runner(["gh", "repo", "clone", inp.github_repo, str(inp.repo_dir)])
 
-    install_guardrails(inp.repo_dir, inp.name, inp.lint_cmd, inp.build_cmd, inp.test_cmd)
+    # Optionally impose strong formatting/lint rules for the detected language, folding the
+    # format+lint check into the lint gate so commits + trunk-health enforce it.
+    lint_cmd = inp.lint_cmd
+    fmt_language = None
+    if inp.enforce_formatting:
+        fmt_language = formatting.detect_language(inp.repo_dir)
+        if fmt_language:
+            spec = formatting.install_formatting(inp.repo_dir, fmt_language, runner=runner)
+            lint_cmd = f"{spec.check_cmd} && {inp.lint_cmd}" if inp.lint_cmd else spec.check_cmd
+
+    install_guardrails(inp.repo_dir, inp.name, lint_cmd, inp.build_cmd, inp.test_cmd)
     mcp_path = paths.home() / "plane-mcp.json"
-    write_project_config(inp, state_ids, mcp_path, project_id)
+    write_project_config(inp, state_ids, mcp_path, project_id, lint_cmd=lint_cmd)
     meta = {"github_repo": inp.github_repo, "repo_dir": str(inp.repo_dir),
-            "plane_project_id": project_id}
+            "plane_project_id": project_id, "formatting": fmt_language}
     paths.register_project(inp.name, meta)
     return meta

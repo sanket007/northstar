@@ -141,3 +141,48 @@ def test_install_guardrails_writes_settings_hook_and_claude(tmp_path, monkeypatc
     assert (repo / ".claude" / "hooks" / "precommit_gate.sh").exists()
     claude_md = (repo / "CLAUDE.md").read_text()
     assert "acme" in claude_md
+
+
+def test_add_project_enforces_formatting_for_detected_language(tmp_path, monkeypatch):
+    monkeypatch.setenv("NORTHSTAR_HOME", str(tmp_path / ".northstar"))
+    monkeypatch.delenv("NORTHSTAR_ASSETS_DIR", raising=False)
+    import northstar.paths as paths; importlib.reload(paths)
+    from northstar import project
+    repo = tmp_path / "repo"; (repo / "docs").mkdir(parents=True)
+    (repo / "pyproject.toml").write_text("[project]\nname = 'x'\n")
+    inp = project.ProjectInputs(
+        name="acme", plane_base_url="https://x", plane_api_key="k", plane_workspace_slug="w",
+        plane_project_id="p", github_repo="o/acme", repo_dir=repo,
+        lint_cmd="make lint", build_cmd="make build", test_cmd="make test",
+        enforce_formatting=True)
+    meta = project.add_project(inp, runner=lambda cmd, **kw: CommandResult(0, "", ""),
+                               admin=FakeAdmin())
+    assert meta["formatting"] == "python"
+    assert (repo / "ruff.toml").exists()
+    import yaml
+    data = yaml.safe_load(paths.project_config_path("acme").read_text())
+    assert "ruff" in data["verify_cmd"] and "make lint" in data["verify_cmd"]
+    hook = json.loads((repo / ".claude" / "settings.json").read_text())
+    cmd = hook["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
+    assert "ruff check" in cmd                    # format+lint folded into the commit gate
+
+
+def test_add_project_skips_formatting_when_disabled(tmp_path, monkeypatch):
+    monkeypatch.setenv("NORTHSTAR_HOME", str(tmp_path / ".northstar"))
+    monkeypatch.delenv("NORTHSTAR_ASSETS_DIR", raising=False)
+    import northstar.paths as paths; importlib.reload(paths)
+    from northstar import project
+    repo = tmp_path / "repo"; (repo / "docs").mkdir(parents=True)
+    (repo / "pyproject.toml").write_text("[project]\nname = 'x'\n")
+    inp = project.ProjectInputs(
+        name="acme", plane_base_url="https://x", plane_api_key="k", plane_workspace_slug="w",
+        plane_project_id="p", github_repo="o/acme", repo_dir=repo,
+        lint_cmd="make lint", build_cmd="make build", test_cmd="make test",
+        enforce_formatting=False)
+    meta = project.add_project(inp, runner=lambda cmd, **kw: CommandResult(0, "", ""),
+                               admin=FakeAdmin())
+    assert meta["formatting"] is None
+    assert not (repo / "ruff.toml").exists()
+    import yaml
+    data = yaml.safe_load(paths.project_config_path("acme").read_text())
+    assert "ruff" not in data["verify_cmd"]

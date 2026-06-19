@@ -51,13 +51,14 @@ def test_project_add_new_plane_project_builds_inputs(tmp_path, monkeypatch):
         "--name", "acme", "--plane-base-url", "https://x", "--plane-api-key", "k",
         "--plane-workspace-slug", "w", "--github-repo", "o/acme",
         "--repo-dir", str(tmp_path / "repo"),
-        "--lint-cmd", "l", "--build-cmd", "b", "--test-cmd", "t",
+        "--lint-cmd", "l", "--build-cmd", "b", "--test-cmd", "t", "--no-formatting",
         "--new-plane-project", "--plane-project-name", "Acme", "--plane-identifier", "ACME",
     ])
     assert result.exit_code == 0
     inp = captured["inp"]
     assert inp.plane_new_project is True
     assert inp.plane_project_name == "Acme" and inp.plane_identifier == "ACME"
+    assert inp.enforce_formatting is False       # --no-formatting wires through
 
 
 def test_start_uses_load_project(tmp_path, monkeypatch):

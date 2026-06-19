@@ -16,7 +16,7 @@ class CommandResult:
         return self.returncode == 0
 
 
-def run(cmd, *, shell=False, env=None, timeout=None, input=None) -> CommandResult:
+def run(cmd, *, shell=False, env=None, timeout=None, input=None, cwd=None) -> CommandResult:
     # These are non-interactive tool invocations. Detach stdin (unless we're feeding `input`)
     # so an unexpectedly interactive command gets EOF and exits instead of hanging forever.
     stdin = None if input is not None else subprocess.DEVNULL
@@ -24,6 +24,7 @@ def run(cmd, *, shell=False, env=None, timeout=None, input=None) -> CommandResul
     try:
         proc = subprocess.run(
             cmd, shell=shell, env=env, timeout=timeout, input=input, stdin=stdin,
+            cwd=str(cwd) if cwd is not None else None,
             capture_output=True, text=True,
         )
     except (FileNotFoundError, PermissionError) as e:

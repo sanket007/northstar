@@ -128,10 +128,15 @@ Answer the prompts (example values):
 - **GitHub repo (owner/name):** `<youruser>/northstar-sandbox`
 - **Local path for the repo:** the absolute path where you cloned it in step 4
 - **lint/build/test:** `npm run lint`, `npm run build`, `npm test`
+- **Impose strong formatting + lint rules? [y]:** `y` — if the repo's language is supported
+  (JavaScript/TypeScript → ESLint + Prettier, Python → Ruff, Go → gofumpt + golangci-lint),
+  northstar writes a strict config, installs the tooling as dev dependencies, and folds a
+  format+lint check into the commit gate so agents can't land unformatted code. Choose `n` (or pass
+  `--no-formatting`) to skip. Unsupported languages are skipped automatically.
 
 This creates the Plane project, reconciles its board to the 8 columns (Draft → … → Deployed), installs
-the guardrail hook + `CLAUDE.md` into the repo, discovers the state IDs, and registers the project.
-Verify: open the project in Plane and confirm the 8 columns exist.
+the guardrail hook + `CLAUDE.md` (+ optional formatting config) into the repo, discovers the state IDs,
+and registers the project. Verify: open the project in Plane and confirm the 8 columns exist.
 
 ```bash
 northstar project list        # should show 'sandbox'

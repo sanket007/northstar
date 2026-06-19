@@ -31,6 +31,13 @@ within this repo and the ticket's scope.
 - Test: `npm test`
 (Adjust per project language; the commit hook reads `LINT_CMD`/`BUILD_CMD`/`TEST_CMD`.)
 
+## Formatting & lint (enforced at commit)
+If this repo has a strong formatting setup (e.g. `eslint.config.js` + `.prettierrc.json`,
+`ruff.toml`, or `.golangci.yml`), the pre-commit gate rejects unformatted or lint-failing code.
+Run the project's auto-fixer before committing — e.g. `ruff check . --fix && ruff format .`,
+`npx eslint . --fix && npx prettier --write .`, or `gofumpt -w . && golangci-lint run --fix` —
+and never weaken a rule to get past the gate.
+
 ## Workflow
 Your specific role (builder / reviewer / QA) and its steps are provided in the session's system
 prompt. Honor the board state machine.
