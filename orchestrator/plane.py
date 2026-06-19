@@ -78,6 +78,14 @@ class PlaneClient:
     def set_state(self, issue_id: str, state_id: str) -> None:
         self._send("PATCH", f"{self._prefix}/work-items/{issue_id}/", json={"state": state_id})
 
+    def get_issue(self, issue_id: str) -> Issue:
+        resp = self._send("GET", f"{self._prefix}/work-items/{issue_id}/")
+        return self._parse_issue(resp.json())
+
+    def list_blocked_by(self, issue_id: str) -> list[str]:
+        resp = self._send("GET", f"{self._prefix}/work-items/{issue_id}/relations/")
+        return resp.json().get("blocked_by", []) or []
+
     @staticmethod
     def _parse_issue(r: dict) -> Issue:
         return Issue(id=r["id"], name=r.get("name", ""),

@@ -4,7 +4,7 @@ import sys
 import time
 
 from orchestrator.config import Config
-from orchestrator.state_machine import role_for_state
+from orchestrator.state_machine import role_for_state, READY_TO_DEV
 
 
 class Ownership:
@@ -32,8 +32,25 @@ class Ownership:
 # States that trigger a session, in priority order (finish work before starting new).
 _ACTIONABLE_ORDER = ["QA", "Review", "In Progress", "Ready to Dev"]
 
+_DONE_STATES = {"Completed", "Deployed"}
+
+
+def dependencies_clear(client, cfg, issue, cache: dict | None = None) -> bool:
+    blockers = client.list_blocked_by(issue.id)
+    if not blockers:
+        return True
+    id_to_name = {v: k for k, v in cfg.state_ids.items()}
+    cache = cache if cache is not None else {}
+    for bid in blockers:
+        if bid not in cache:
+            cache[bid] = id_to_name.get(client.get_issue(bid).state_id)
+        if cache[bid] not in _DONE_STATES:
+            return False
+    return True
+
 
 def poll_once(client, cfg: Config, ownership: Ownership, dispatch) -> None:
+    dep_cache: dict = {}
     for state_name in _ACTIONABLE_ORDER:
         if ownership.count() >= cfg.max_concurrency:
             return
@@ -47,6 +64,8 @@ def poll_once(client, cfg: Config, ownership: Ownership, dispatch) -> None:
             if ownership.count() >= cfg.max_concurrency:
                 return
             if ownership.owns(issue.id):
+                continue
+            if state_name == READY_TO_DEV and not dependencies_clear(client, cfg, issue, dep_cache):
                 continue
             ownership.claim(issue.id)
             dispatch(issue, role)
