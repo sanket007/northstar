@@ -3,6 +3,7 @@ import os
 import subprocess
 
 from northstar import paths, assets
+from orchestrator import obs
 
 
 def build_import_command(claude_binary, mcp_config_path, importer_doc_text,
@@ -15,6 +16,7 @@ def build_import_command(claude_binary, mcp_config_path, importer_doc_text,
     )
     return [
         claude_binary,
+        "--dangerously-skip-permissions",
         "--mcp-config", str(mcp_config_path),
         "--append-system-prompt", importer_doc_text,
         initial,
@@ -29,4 +31,5 @@ def run_import(name, plan_path, *, runner=subprocess.run) -> None:
     project_id = rt.cfg.get("plane_project_id", "")
     cmd = build_import_command(claude_binary, mcp, doc, plan_path, project_id)
     env = {**os.environ, **rt.plane_env}
+    obs.info("import", f"launching interactive plan import for {name} from {plan_path}")
     runner(cmd, cwd=str(rt.repo_dir), env=env)

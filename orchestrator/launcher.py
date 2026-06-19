@@ -4,8 +4,10 @@ from pathlib import Path
 from typing import Iterable
 import json
 import subprocess
+import time
 
 from orchestrator.config import Config
+from orchestrator import obs
 
 
 @dataclass
@@ -33,7 +35,7 @@ def build_claude_command(cfg: Config, role: str, ticket_id: str,
     return [
         cfg.claude_binary, "-p", prompt,
         "--output-format", "stream-json", "--verbose",
-        "--permission-mode", "bypassPermissions",
+        "--dangerously-skip-permissions",
         "--mcp-config", str(cfg.mcp_config_path),
         "--model", cfg.claude_model,
         "--max-turns", str(cfg.max_turns),
@@ -65,6 +67,8 @@ def run_session(cfg: Config, role: str, ticket_id: str, worktree: Path,
                 *, runner=subprocess.Popen) -> SessionResult:
     role_doc_text = _role_doc_text(cfg, role)
     cmd = build_claude_command(cfg, role, ticket_id, role_doc_text)
+    obs.info("claude", f"launching {role} session for {ticket_id} in {worktree.name}")
+    started = time.monotonic()
     proc = runner(cmd, cwd=str(worktree), stdout=subprocess.PIPE,
                   stderr=subprocess.STDOUT, text=True)
     try:
@@ -72,8 +76,14 @@ def run_session(cfg: Config, role: str, ticket_id: str, worktree: Path,
     except subprocess.TimeoutExpired:
         proc.kill()
         proc.communicate()
+        obs.info("claude", f"✗ {role} session for {ticket_id} timed out "
+                           f"({time.monotonic() - started:.0f}s)")
         return SessionResult(ok=False, error="session timeout")
     result = parse_stream_json((stdout or "").splitlines())
+    dur = time.monotonic() - started
     if proc.returncode not in (0, None) and result.ok:
+        obs.info("claude", f"✗ {role} session for {ticket_id} exited {proc.returncode} ({dur:.0f}s)")
         return SessionResult(ok=False, error=f"claude exited {proc.returncode}")
+    obs.info("claude", f"{'✓' if result.ok else '✗'} {role} session for {ticket_id} "
+                       f"finished ({dur:.0f}s)")
     return result
