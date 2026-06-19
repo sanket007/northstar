@@ -70,9 +70,22 @@ Encodes this procedure:
 7. **Summarize:** report what was created/skipped + the dependency edges.
 
 ### 3.3 Multi-plan continuation
-Because each task carries a stable `external_id`, importing plan #2..#N **adds** their tasks without
-duplicating prior ones, and their dependency edges can reference existing tasks. Re-importing the same
-plan is a no-op (all `external_id`s already exist).
+Importing plan #2..#N **adds** their tasks without duplicating prior ones, and their dependency edges
+can reference existing tasks. Re-importing the same plan is a no-op. The importer matches "already
+created" tasks by `external_id` (or the `[ns:…]` marker) **when present**, and otherwise by title/content
+lookup — so it converges whether or not a task carries the marker.
+
+### 3.4 `external_id` is importer-local — NOT a system coupling
+The platform must be fully compliant with tasks created **directly in the Plane board** by the user
+(which carry no `external_id`/marker). Therefore:
+- The **orchestrator** (builder/reviewer/QA) and the **scheduler** never read or require `external_id` —
+  they operate on *any* work item by its state, comments, and relations. A hand-created Plane task flows
+  through Ready to Dev → … → Completed identically to an imported one.
+- `external_id`/the `[ns:…]` marker is used **only** by the importer, **only** for its own
+  re-import dedup. If it's absent, the importer falls back to title/content matching; it never assumes
+  every task has it.
+- Dependency edges may target hand-created tasks: the importer links blockers it finds by lookup
+  (title/sequence), not by requiring a marker on the target.
 
 ---
 
