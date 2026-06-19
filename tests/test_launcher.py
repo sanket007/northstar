@@ -16,21 +16,14 @@ def make_cfg(tmp_path) -> Config:
     )
 
 
-def test_build_command_includes_required_flags(tmp_path):
+def test_build_command_drops_worktree_and_trims_prompt(tmp_path):
+    from orchestrator.launcher import build_claude_command
     cfg = make_cfg(tmp_path)
-    cmd = build_claude_command(cfg, "builder", "i1", tmp_path / "wt/i1", "ROLE TEXT")
-    assert cmd[0] == "claude"
-    assert "-p" in cmd
-    assert "stream-json" in cmd
-    assert "bypassPermissions" in cmd
-    assert str(cfg.mcp_config_path) in cmd
-    # role instructions injected via append-system-prompt
-    assert "ROLE TEXT" in cmd
-    # the prompt names the ticket id
-    assert any("i1" in part for part in cmd)
-    # max-turns cap must be present
-    assert "--max-turns" in cmd
-    assert str(cfg.max_turns) in cmd
+    cmd = build_claude_command(cfg, "builder", "i1", "ROLE TEXT")  # no worktree arg
+    assert "ROLE TEXT" in cmd and "stream-json" in cmd and "bypassPermissions" in cmd
+    p = cmd[cmd.index("-p") + 1]
+    assert "i1" in p and "builder" in p
+    assert "hydrat" not in p.lower() and "comment" not in p.lower()  # prompt no longer restates hydration
 
 
 def test_role_doc_path(tmp_path):

@@ -1,6 +1,5 @@
 from __future__ import annotations
 from pathlib import Path
-import yaml
 import typer
 
 from northstar import doctor, project, supervisor, paths
@@ -82,20 +81,10 @@ def project_add(
     typer.echo(f"added {name}: {meta['github_repo']}")
 
 
-def _plane_env(name: str) -> dict:
-    cfg = yaml.safe_load(paths.project_config_path(name).read_text())
-    return {"PLANE_API_KEY": cfg["plane_api_key"],
-            "PLANE_BASE_URL": cfg["plane_base_url"],
-            "PLANE_WORKSPACE_SLUG": cfg["plane_workspace_slug"]}
-
-
-def _repo_dir(name: str) -> Path:
-    return Path(paths.list_projects()[name]["repo_dir"])
-
-
 @app.command()
 def start(name: str):
-    supervisor.start(name, _repo_dir(name), _plane_env(name))
+    rt = paths.load_project(name)
+    supervisor.start(name, rt.repo_dir, rt.plane_env)
     typer.echo(f"started ns-{name}")
 
 
@@ -107,7 +96,8 @@ def stop(name: str):
 
 @app.command()
 def restart(name: str):
-    supervisor.restart(name, _repo_dir(name), _plane_env(name))
+    rt = paths.load_project(name)
+    supervisor.restart(name, rt.repo_dir, rt.plane_env)
     typer.echo(f"restarted ns-{name}")
 
 

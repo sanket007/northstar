@@ -18,23 +18,26 @@ def role_doc_path(cfg: Config, role: str) -> Path:
     return cfg.templates_dir / f"{role}.md"
 
 
+_ROLE_DOC_CACHE: dict[str, str] = {}
+
+
+def _role_doc_text(cfg: Config, role: str) -> str:
+    if role not in _ROLE_DOC_CACHE:
+        _ROLE_DOC_CACHE[role] = role_doc_path(cfg, role).read_text()
+    return _ROLE_DOC_CACHE[role]
+
+
 def build_claude_command(cfg: Config, role: str, ticket_id: str,
-                         worktree: Path, role_doc_text: str) -> list[str]:
-    prompt = (
-        f"You are acting as the {role} for Plane work item {ticket_id}. "
-        f"Follow your role instructions exactly. Begin by fully hydrating context "
-        f"(work item, all comments, PR thread, docs/ memory) before any action."
-    )
+                         role_doc_text: str) -> list[str]:
+    prompt = f"You are the {role} for Plane work item {ticket_id}. Follow your role instructions."
     return [
-        cfg.claude_binary,
-        "-p", prompt,
-        "--output-format", "stream-json",
-        "--verbose",
+        cfg.claude_binary, "-p", prompt,
+        "--output-format", "stream-json", "--verbose",
         "--permission-mode", "bypassPermissions",
         "--mcp-config", str(cfg.mcp_config_path),
         "--model", cfg.claude_model,
-        "--append-system-prompt", role_doc_text,
         "--max-turns", str(cfg.max_turns),
+        "--append-system-prompt", role_doc_text,
     ]
 
 
@@ -60,8 +63,8 @@ def parse_stream_json(lines: Iterable[str]) -> SessionResult:
 
 def run_session(cfg: Config, role: str, ticket_id: str, worktree: Path,
                 *, runner=subprocess.Popen) -> SessionResult:
-    role_doc_text = role_doc_path(cfg, role).read_text()
-    cmd = build_claude_command(cfg, role, ticket_id, worktree, role_doc_text)
+    role_doc_text = _role_doc_text(cfg, role)
+    cmd = build_claude_command(cfg, role, ticket_id, role_doc_text)
     proc = runner(cmd, cwd=str(worktree), stdout=subprocess.PIPE,
                   stderr=subprocess.STDOUT, text=True)
     try:

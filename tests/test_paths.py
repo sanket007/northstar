@@ -27,3 +27,15 @@ def test_register_and_list_roundtrip(tmp_path, monkeypatch):
     assert set(p.list_projects()) == {"acme", "beta"}
     p.unregister_project("acme")
     assert set(p.list_projects()) == {"beta"}
+
+
+def test_load_project_reads_each_file_once(tmp_path, monkeypatch):
+    p = reload_paths(tmp_path, monkeypatch)
+    p.ensure_dirs()
+    p.register_project("acme", {"github_repo": "o/acme", "repo_dir": "/tmp/acme"})
+    p.project_config_path("acme").write_text(
+        "plane_api_key: K\nplane_base_url: https://x\nplane_workspace_slug: w\nrepo_dir: /tmp/acme\n")
+    rt = p.load_project("acme")
+    assert rt.repo_dir == __import__("pathlib").Path("/tmp/acme")
+    assert rt.plane_env == {"PLANE_API_KEY": "K", "PLANE_BASE_URL": "https://x", "PLANE_WORKSPACE_SLUG": "w"}
+    assert rt.cfg_path == p.project_config_path("acme")
