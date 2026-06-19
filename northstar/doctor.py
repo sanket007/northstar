@@ -3,6 +3,7 @@ from dataclasses import dataclass
 import sys
 
 from northstar.proc import run
+from northstar import paths
 
 
 @dataclass
@@ -49,10 +50,11 @@ def run_checks(runner=run, deep=False) -> list[Check]:
 
     checks.append(_tool(runner, "uvx", ["uvx", "--version"], critical=True,
                         fix="install uv (astral.sh/uv)"))
-    checks.append(_tool(runner, "tmux", ["tmux", "-V"], critical=True,
-                        fix="install tmux"))
+    checks.append(_tool(runner, "tmux", ["tmux", "-V"], critical=False,
+                        fix="install tmux (needed only for the tmux backend; or use --backend detached)"))
     checks.append(_tool(runner, "npx", ["npx", "--version"], critical=False,
                         fix="install Node.js (needed for the grill-me skill)"))
+    checks.append(Check("process-backend", True, False, paths.get_backend(), ""))
     return checks
 
 
