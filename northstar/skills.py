@@ -59,9 +59,11 @@ def install_all(runner=run) -> list[tuple[str, bool, str]]:
     for src in marketplaces():
         runner(["claude", "plugin", "marketplace", "add", src])
     runner(["claude", "plugin", "marketplace", "update"])
+    present = installed_plugins(runner=runner)
     for p in PLUGINS:
         ref = f"{p.name}@{p.marketplace}"
-        runner(["claude", "plugin", "install", ref, "--scope", "user"])
+        if p.name not in present:
+            runner(["claude", "plugin", "install", ref, "--scope", "user"])
         upd = runner(["claude", "plugin", "update", ref, "--scope", "user"])
         results.append((p.name, upd.ok, "plugin"))
     for n in NATIVE:

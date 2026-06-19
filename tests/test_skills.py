@@ -35,3 +35,22 @@ def test_install_all_runs_marketplace_then_install_then_update_then_native():
     # native installers attempted
     assert any("JuliusBrussee/caveman" in c for c in calls)
     assert any("skills@latest add mattpocock/skills" in c for c in calls)
+
+
+def test_install_all_skips_install_for_present_plugin():
+    import json as _json
+    from northstar.proc import CommandResult
+    present = _json.dumps([{"name": "superpowers", "version": "6.0.2"}])
+    calls = []
+    def runner(cmd, **kw):
+        joined = cmd if isinstance(cmd, str) else " ".join(cmd)
+        calls.append(joined)
+        if "plugin list --json" in joined:
+            return CommandResult(0, present, "")
+        return CommandResult(0, "", "")
+    skills.install_all(runner=runner)
+    # superpowers is present -> no install line for it, but an update line yes
+    assert not any("plugin install superpowers@" in c for c in calls)
+    assert any("plugin update superpowers@" in c for c in calls)
+    # an absent plugin (frontend-design) IS installed
+    assert any("plugin install frontend-design@" in c for c in calls)
