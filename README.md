@@ -1,5 +1,8 @@
 # northstar
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
+
 **An autonomous software-development orchestrator.** northstar watches a self-hosted
 [Plane](https://plane.so) board and drives each task through the full delivery
 lifecycle — **build → review → QA → merge** — by launching real
@@ -163,5 +166,4 @@ cycle detection, reboot-persistent service backend, and more).
 
 ## License
 
-No license has been declared yet, so default copyright applies. If you'd like to permit reuse,
-add a `LICENSE` file (MIT is a common choice for tooling like this).
+Released under the [MIT License](LICENSE) © 2026 Sanket Lakhani.

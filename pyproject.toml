@@ -5,7 +5,14 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "northstar"
 version = "0.1.0"
+description = "Autonomous software-development orchestrator that drives a Plane board through build/review/QA/merge with real Claude Code sessions"
+readme = "README.md"
 requires-python = ">=3.11"
+license = { text = "MIT" }
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+]
 dependencies = ["httpx>=0.27", "PyYAML>=6.0", "typer>=0.12"]
 
 [project.optional-dependencies]
