@@ -1,5 +1,8 @@
 <p align="center">
-  <img src="assets/logo-wordmark.svg" alt="northstar" width="340">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/logo-wordmark-dark.svg">
+    <img src="assets/logo-wordmark.svg" alt="northstar" width="340">
+  </picture>
 </p>
 
 <p align="center">
