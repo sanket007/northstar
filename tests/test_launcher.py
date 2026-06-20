@@ -63,11 +63,11 @@ def test_run_session_timeout_returns_failure(tmp_path):
 
     class FakeProc:
         returncode = -9
+        stdout = None
 
-        def communicate(self, timeout=None):
+        def wait(self, timeout=None):
             if timeout is not None:
                 raise subprocess.TimeoutExpired(cmd=["claude"], timeout=timeout)
-            return ("", "")
 
         def kill(self):
             pass
@@ -78,3 +78,52 @@ def test_run_session_timeout_returns_failure(tmp_path):
     result = run_session(cfg, "builder", "i1", tmp_path / "wt", runner=fake_runner)
     assert result.ok is False
     assert result.error == "session timeout"
+
+
+def test_claude_event_line_formats_events():
+    from orchestrator.launcher import claude_event_line
+    assert claude_event_line('{"type":"system","subtype":"init"}') == "session initialized"
+    assert claude_event_line(
+        '{"type":"assistant","message":{"content":[{"type":"text","text":"hello\\nworld"}]}}'
+    ) == "says: hello world"
+    assert claude_event_line(
+        '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash"}]}}'
+    ) == "tool: Bash"
+    assert claude_event_line('{"type":"result","subtype":"success"}') == "result: success"
+    assert claude_event_line("not json") is None
+
+
+def test_run_session_streams_events_live_and_parses_result(tmp_path, capsys):
+    cfg = make_cfg(tmp_path)
+    (cfg.templates_dir).mkdir(parents=True, exist_ok=True)
+    (cfg.templates_dir / "builder.md").write_text("stub")
+
+    class FakeStream:
+        def __init__(self, lines):
+            self._it = iter(lines)
+
+        def readline(self):
+            return next(self._it, "")
+
+    class FakeProc:
+        returncode = 0
+
+        def __init__(self):
+            self.stdout = FakeStream([
+                '{"type":"system","subtype":"init"}\n',
+                '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit"}]}}\n',
+                '{"type":"result","subtype":"success","is_error":false}\n',
+            ])
+
+        def wait(self, timeout=None):
+            return 0
+
+        def kill(self):
+            pass
+
+    result = run_session(cfg, "builder", "abc12345", tmp_path / "wt",
+                         runner=lambda cmd, **kw: FakeProc())
+    assert result.ok is True
+    err = capsys.readouterr().err
+    assert "tool: Edit" in err          # streamed live, per event
+    assert "builder/abc12345" in err

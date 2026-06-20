@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Iterable
 import json
 import subprocess
+import threading
 import time
 
 from orchestrator.config import Config
@@ -63,27 +64,79 @@ def parse_stream_json(lines: Iterable[str]) -> SessionResult:
     return SessionResult(ok=False, error="unknown")
 
 
+def claude_event_line(raw: str) -> str | None:
+    """Turn one stream-json event into a short, human-readable activity line (or None to skip)."""
+    try:
+        obj = json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    kind = obj.get("type")
+    if kind == "system" and obj.get("subtype") == "init":
+        return "session initialized"
+    if kind == "assistant":
+        parts = []
+        for block in obj.get("message", {}).get("content", []):
+            bt = block.get("type")
+            if bt == "text":
+                txt = " ".join(block.get("text", "").split())
+                if txt:
+                    parts.append(f"says: {txt[:200]}")
+            elif bt == "tool_use":
+                parts.append(f"tool: {block.get('name', '?')}")
+        return " | ".join(parts) or None
+    if kind == "result":
+        return f"result: {obj.get('subtype', 'done')}"
+    return None
+
+
+def _pump_stream(stream, role: str, ticket_id: str, sink: list[str]) -> None:
+    """Read the session's stream-json line-by-line, capturing each line and emitting it live."""
+    if stream is None:
+        return
+    short = ticket_id[:8]
+    for raw in iter(stream.readline, ""):
+        raw = raw.rstrip("\n")
+        if not raw:
+            continue
+        sink.append(raw)
+        msg = claude_event_line(raw)
+        if msg:
+            obs.info("claude", f"{role}/{short} {msg}")
+
+
 def run_session(cfg: Config, role: str, ticket_id: str, worktree: Path,
                 *, runner=subprocess.Popen) -> SessionResult:
     role_doc_text = _role_doc_text(cfg, role)
     cmd = build_claude_command(cfg, role, ticket_id, role_doc_text)
     obs.info("claude", f"launching {role} session for {ticket_id} in {worktree.name}")
     started = time.monotonic()
+    # Line-buffered text pipe so the reader thread sees each stream-json event as it lands,
+    # giving real-time visibility into what the session is doing (in `northstar logs`).
     proc = runner(cmd, cwd=str(worktree), stdout=subprocess.PIPE,
-                  stderr=subprocess.STDOUT, text=True)
+                  stderr=subprocess.STDOUT, text=True, bufsize=1)
+    lines: list[str] = []
+    pump = threading.Thread(target=_pump_stream,
+                            args=(getattr(proc, "stdout", None), role, ticket_id, lines),
+                            daemon=True)
+    pump.start()
     try:
-        stdout, _ = proc.communicate(timeout=cfg.session_timeout_seconds)
+        proc.wait(timeout=cfg.session_timeout_seconds)
     except subprocess.TimeoutExpired:
         proc.kill()
-        proc.communicate()
-        obs.info("claude", f"✗ {role} session for {ticket_id} timed out "
+        try:
+            proc.wait(timeout=5)
+        except Exception:
+            pass
+        pump.join(timeout=2)
+        obs.info("claude", f"{role} session for {ticket_id} timed out "
                            f"({time.monotonic() - started:.0f}s)")
         return SessionResult(ok=False, error="session timeout")
-    result = parse_stream_json((stdout or "").splitlines())
+    pump.join(timeout=5)
+    result = parse_stream_json(lines)
     dur = time.monotonic() - started
     if proc.returncode not in (0, None) and result.ok:
-        obs.info("claude", f"✗ {role} session for {ticket_id} exited {proc.returncode} ({dur:.0f}s)")
+        obs.info("claude", f"{role} session for {ticket_id} exited {proc.returncode} ({dur:.0f}s)")
         return SessionResult(ok=False, error=f"claude exited {proc.returncode}")
-    obs.info("claude", f"{'✓' if result.ok else '✗'} {role} session for {ticket_id} "
-                       f"finished ({dur:.0f}s)")
+    obs.info("claude", f"{role} session for {ticket_id} "
+                       f"{'finished' if result.ok else 'failed'} ({dur:.0f}s)")
     return result
