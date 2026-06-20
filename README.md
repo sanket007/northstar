@@ -83,6 +83,9 @@ pip install -e .
 northstar --help
 ```
 
+> Use an **editable** install (`-e`). The CLI resolves its bundled `templates/` and `plane-mcp.json`
+> relative to the source tree; to run from elsewhere, set `NORTHSTAR_ASSETS_DIR` to the repo root.
+
 ## Quickstart
 
 ```bash
