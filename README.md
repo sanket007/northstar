@@ -1,7 +1,11 @@
-# northstar
+<p align="center">
+  <img src="assets/logo-wordmark.svg" alt="northstar" width="340">
+</p>
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
+  <a href="https://www.python.org/"><img src="https://img.shields.io/badge/python-3.11%2B-blue.svg" alt="Python 3.11+"></a>
+</p>
 
 **An autonomous software-development orchestrator.** northstar watches a self-hosted
 [Plane](https://plane.so) board and drives each task through the full delivery
