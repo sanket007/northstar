@@ -128,6 +128,8 @@ Answer the prompts (example values):
 - **GitHub repo (owner/name):** `<youruser>/northstar-sandbox`
 - **Local path for the repo:** the absolute path where you cloned it in step 4
 - **lint/build/test:** `npm run lint`, `npm run build`, `npm test`
+- **How many tasks to build in parallel?:** e.g. `3` — the daemon will run up to this many independent,
+  dependency-cleared tasks at once, each in its own git worktree + Claude session. Use `1` for serial.
 - **Impose strong formatting + lint rules? [y]:** `y` — if the repo's language is supported
   (JavaScript/TypeScript → ESLint + Prettier, Python → Ruff, Go → gofumpt + golangci-lint),
   northstar writes a strict config, installs the tooling as dev dependencies, and folds a

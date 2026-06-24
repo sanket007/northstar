@@ -173,3 +173,37 @@ def test_rework_count_counts_only_reviewer_qa_bounces():
 
 def test_rework_count_is_case_insensitive_and_null_safe():
     assert rework_count([_C("[REVIEWER] REVIEW → IN PROGRESS"), _C(None)]) == 1
+
+
+def test_run_executes_dispatches_in_parallel():
+    import threading, time as _t
+    from orchestrator.poller import run
+    states = {"Ready to Dev": "s-ready", "In Progress": "s-prog", "Review": "s-rev",
+              "QA": "s-qa", "Blocked": "s-blk", "Completed": "s-done"}
+    cfg = make_cfg(states, concurrency=3)
+    issues = [Issue(f"i{n}", f"t{n}", "", "s-ready", n) for n in range(3)]
+    client = FakeClient({"s-ready": issues})
+    lock = threading.Lock(); active = [0]; peak = [0]
+
+    def dispatch(issue, role):
+        with lock:
+            active[0] += 1; peak[0] = max(peak[0], active[0])
+        _t.sleep(0.15)
+        with lock:
+            active[0] -= 1
+
+    run(cfg, client=client, dispatch=dispatch, sleep=lambda s: None, max_iterations=1)
+    assert peak[0] == 3        # all three ran at the same time
+
+
+def test_run_concurrency_one_stays_serial():
+    from orchestrator.poller import run
+    states = {"Ready to Dev": "s-ready", "In Progress": "s-prog", "Review": "s-rev",
+              "QA": "s-qa", "Blocked": "s-blk", "Completed": "s-done"}
+    cfg = make_cfg(states, concurrency=1)
+    issues = [Issue(f"i{n}", f"t{n}", "", "s-ready", n) for n in range(3)]
+    client = FakeClient({"s-ready": issues})
+    order = []
+    run(cfg, client=client, dispatch=lambda i, r: order.append(i.id),
+        sleep=lambda s: None, max_iterations=1)
+    assert order == ["i0"]     # gate stops at 1; only one claimed per poll

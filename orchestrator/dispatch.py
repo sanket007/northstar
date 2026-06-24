@@ -1,5 +1,6 @@
 from __future__ import annotations
 from typing import Callable
+import threading
 
 from orchestrator import obs
 from orchestrator.config import Config
@@ -16,6 +17,9 @@ def make_dispatch(cfg: Config, ownership: Ownership, *, run=run_session,
                   plane: PlaneClient | None = None) -> Callable[[Issue, str], None]:
     plane = plane or PlaneClient(cfg.plane_base_url, cfg.plane_api_key,
                                  cfg.plane_workspace_slug, cfg.plane_project_id)
+    # git worktree add/remove/prune mutate shared repo metadata — serialize them so
+    # concurrent dispatches don't race on the same repo. Sessions still run in parallel.
+    wt_lock = threading.Lock()
 
     def _block(issue_id: str, reason: str) -> None:
         try:
@@ -41,7 +45,8 @@ def make_dispatch(cfg: Config, ownership: Ownership, *, run=run_session,
         worktree = None
         failure = None
         try:
-            worktree = mk_worktree(cfg.repo_dir, cfg.worktrees_root, slug, cfg.base_branch)
+            with wt_lock:
+                worktree = mk_worktree(cfg.repo_dir, cfg.worktrees_root, slug, cfg.base_branch)
             result = run(cfg, role, issue.id, worktree)
             if result is None or not result.ok:
                 failure = (result.error if result is not None
@@ -51,7 +56,8 @@ def make_dispatch(cfg: Config, ownership: Ownership, *, run=run_session,
         finally:
             if worktree is not None:
                 try:
-                    rm_worktree(cfg.repo_dir, worktree)
+                    with wt_lock:
+                        rm_worktree(cfg.repo_dir, worktree)
                 except Exception:
                     pass
             if failure is not None:

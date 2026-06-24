@@ -1,4 +1,5 @@
 from __future__ import annotations
+from concurrent.futures import ThreadPoolExecutor
 from threading import Lock
 import sys
 import time
@@ -94,11 +95,23 @@ def run(cfg: Config, *, client=None, dispatch=None, sleep=time.sleep,
     if dispatch is None:
         from orchestrator.dispatch import make_dispatch
         dispatch = make_dispatch(cfg, ownership, plane=client)
+
+    # Run dispatches concurrently up to max_concurrency. poll_once claims a ticket
+    # (ownership) before submitting, so the count() gate never over-subscribes the pool;
+    # each dispatch releases its claim when its session finishes (in its own thread).
+    concurrency = max(1, cfg.max_concurrency)
+    pool = ThreadPoolExecutor(max_workers=concurrency) if concurrency > 1 else None
+    submit = (lambda issue, role: pool.submit(dispatch, issue, role)) if pool else dispatch
+
     i = 0
-    while max_iterations is None or i < max_iterations:
-        try:
-            poll_once(client, cfg, ownership, dispatch)
-        except Exception as e:  # noqa: BLE001 — daemon must survive transient errors
-            print(f"northstar: poll error: {e}", file=sys.stderr)
-        sleep(cfg.poll_interval_seconds)
-        i += 1
+    try:
+        while max_iterations is None or i < max_iterations:
+            try:
+                poll_once(client, cfg, ownership, submit)
+            except Exception as e:  # noqa: BLE001 — daemon must survive transient errors
+                print(f"northstar: poll error: {e}", file=sys.stderr)
+            sleep(cfg.poll_interval_seconds)
+            i += 1
+    finally:
+        if pool:
+            pool.shutdown(wait=True)

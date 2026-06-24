@@ -76,6 +76,9 @@ def project_add(
     lint_cmd: str = typer.Option("npm run lint", prompt=True),
     build_cmd: str = typer.Option("npm run build", prompt=True),
     test_cmd: str = typer.Option("npm test", prompt=True),
+    max_concurrency: int = typer.Option(
+        3, "--concurrency",
+        prompt="How many tasks to build in parallel? (each runs its own Claude session + git worktree)"),
     enforce_formatting: bool = typer.Option(
         True, "--formatting/--no-formatting",
         prompt="Impose strong formatting + lint rules if the project language is supported "
@@ -105,6 +108,7 @@ def project_add(
         plane_workspace_slug=plane_workspace_slug, plane_project_id=plane_project_id,
         github_repo=github_repo, repo_dir=repo_dir,
         lint_cmd=lint_cmd, build_cmd=build_cmd, test_cmd=test_cmd,
+        max_concurrency=max(1, max_concurrency),
         enforce_formatting=enforce_formatting,
         plane_new_project=new_plane_project, plane_project_name=plane_project_name,
         plane_identifier=plane_identifier)

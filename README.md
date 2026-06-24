@@ -16,8 +16,9 @@ lifecycle — **build → review → QA → merge** — by launching real
 [Claude Code](https://claude.com/claude-code) sessions, one per role, as if a small team of
 engineers were working the board on their own.
 
-> Status: early and experimental. The core loop works end-to-end; it runs one task at a time
-> by default and is under active shakedown. Treat it as a power tool, not a turnkey product.
+> Status: early and experimental. The core loop works end-to-end and can run **multiple tasks in
+> parallel** (each in its own git worktree + Claude session); it's under active shakedown. Treat it as
+> a power tool, not a turnkey product.
 
 ---
 
