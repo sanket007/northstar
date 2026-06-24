@@ -15,7 +15,9 @@ If the ticket is too large to deliver as one focused PR, say so in a comment, mo
 Before any state transition, check the ticket's current state; if it has **already moved** past where you expect, stop — do not re-post or re-move.
 If the ticket is in **Ready to Dev**, move it to **In Progress** and comment
 `**[builder] Ready to Dev → In Progress** — starting work`.
-If it is already **In Progress** (a rework), skip this — you are addressing the latest review/QA feedback from the trail and PR thread.
+If it is already **In Progress**, skip the move and figure out which case you're in from the trail and the branch:
+- **Rework** — the latest comment is reviewer/QA feedback: address it from the trail and the PR thread.
+- **Continuation** — the latest comment is `**[orchestrator] continuing after reaching the turn limit**`: a prior session ran out of turns. Your worktree already has its pushed commits — run `git log --oneline` to see what's done, then continue from there. Do **not** redo finished work.
 
 ## Step 4 — Build
 - **Restate the acceptance criteria** as a checklist and make each one a test. Use `superpowers:test-driven-development`: failing test → minimal code → green.
@@ -23,8 +25,10 @@ If it is already **In Progress** (a rework), skip this — you are addressing th
 - For any UI work, use the `frontend-design` skill. When anything misbehaves, use `superpowers:systematic-debugging`.
 - A test that fails once may be flaky: re-run it to confirm. If it's a real failure, fix the code — **never** make a test pass by weakening or skipping it.
 
-## Step 5 — Memory + commit
-Once per ticket, append a short, cited entry to a `docs/` markdown file: what changed and why, with file paths, ticket id, and (after Step 6) the PR link. Then commit. The commit hook blocks you unless lint+build+test pass and a `docs/` file is staged — fix the code and retry until it passes (never edit the hook or tests to get past it).
+## Step 5 — Memory + commit (checkpoint as you go)
+Append a short, cited entry to a `docs/` markdown file: what changed and why, with file paths, ticket id, and (after Step 6) the PR link. Then commit. The commit hook blocks you unless lint+build+test pass and a `docs/` file is staged — fix the code and retry until it passes (never edit the hook or tests to get past it).
+
+**Commit and push at every green checkpoint, not just at the end.** A large ticket may exceed one session's turn budget; if it does, the orchestrator restarts you in a fresh session. Only work you've **committed and pushed to your branch** survives that restart — anything uncommitted is lost and re-done from scratch. So whenever a coherent slice is green (tests pass), commit it (re-stage/extend the `docs/` entry to satisfy the gate) and `git push` immediately. Keep slices small enough that you always have a recent pushed checkpoint.
 
 ## Step 6 — Verify, push, open PR
 - Use `superpowers:verification-before-completion`: actually run the tests and show they pass.

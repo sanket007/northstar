@@ -43,6 +43,14 @@ For each task, compute a stable id `external_id = <plan-filename>#<task-id>`.
 - Otherwise `create_work_item` in the **Draft** state with: a clear title; a description containing the
   **testable acceptance criteria**, the **non-goals/out-of-scope**, the **citations**, and a reference
   to the source plan/task; and the `external_id` (or the `[ns:…]` marker in the description as a fallback).
+- **Tag a work-type label** on every task — the orchestrator routes on it (a low-risk type skips the
+  reviewer session). Classify each task as exactly one of: `feature`, `bug`, `chore`, `docs`.
+  - `feature` / `bug` → real code/logic change; **must** go through review.
+  - `chore` → mechanical/config/dependency/test-scaffold work with no product-logic change.
+  - `docs` → documentation only (no code behavior change).
+  Use the project's existing label if present; if the label doesn't exist yet, create it first
+  (`create_label`), then attach it. When in doubt between a risky and a safe type, pick the **riskier**
+  one (`feature`/`bug`) so review is not skipped. Confirm each task's type with the user during the grill.
 
 ## Step 6 — Create relations
 For each `blocked_by` edge, call `create_work_item_relation` (relation_type `blocked_by`). Edges may

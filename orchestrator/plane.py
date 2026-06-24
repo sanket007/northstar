@@ -1,5 +1,5 @@
 from __future__ import annotations
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import httpx
 import time
 
@@ -15,6 +15,7 @@ class Issue:
     description_html: str
     state_id: str
     sequence_id: int
+    labels: list[str] = field(default_factory=list)  # label names (resolved from ids)
 
 
 @dataclass
@@ -32,6 +33,7 @@ class PlaneClient:
         self._http.headers.update({"X-API-Key": api_key, "Content-Type": "application/json"})
         self._sleep = sleep
         self._max_retries = max_retries
+        self._label_names: dict[str, str] | None = None  # lazy id->name cache
 
     def _send(self, method, url, **kw):
         delay = 0.5
@@ -73,6 +75,15 @@ class PlaneClient:
         rows = self._paginate(f"{self._prefix}/states/")
         return {r["name"]: r["id"] for r in rows}
 
+    def list_labels(self) -> dict[str, str]:
+        """Project label id -> name. Cached: the skip-review label set is fixed per project,
+        so one fetch per daemon process is enough. An id missing from the map resolves to no
+        name, which fail-safes to 'don't skip' (the reviewer still runs)."""
+        if self._label_names is None:
+            rows = self._paginate(f"{self._prefix}/labels/")
+            self._label_names = {r["id"]: r["name"] for r in rows}
+        return self._label_names
+
     def list_issues_in_state(self, state_id: str, per_page: int = 25) -> list[Issue]:
         rows = self._paginate(f"{self._prefix}/work-items/", {"state": state_id, "per_page": per_page})
         return [self._parse_issue(r) for r in rows if r.get("state") == state_id]
@@ -96,11 +107,14 @@ class PlaneClient:
         resp = self._send("GET", f"{self._prefix}/work-items/{issue_id}/relations/")
         return resp.json().get("blocked_by", []) or []
 
-    @staticmethod
-    def _parse_issue(r: dict) -> Issue:
+    def _parse_issue(self, r: dict) -> Issue:
+        label_ids = r.get("labels") or []
+        names = self.list_labels() if label_ids else {}
+        labels = [names[lid] for lid in label_ids if lid in names]
         return Issue(id=r["id"], name=r.get("name", ""),
                      description_html=r.get("description_html", ""),
-                     state_id=r.get("state", ""), sequence_id=int(r.get("sequence_id", 0)))
+                     state_id=r.get("state", ""), sequence_id=int(r.get("sequence_id", 0)),
+                     labels=labels)
 
     @staticmethod
     def _parse_comment(r: dict) -> Comment:

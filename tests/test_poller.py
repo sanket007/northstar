@@ -149,6 +149,49 @@ def test_poll_dispatches_ready_task_with_no_blockers():
     assert dispatched == ["t1"]
 
 
+# --- skip-review routing by work-type label ---
+class FakeRouter(FakeClient):
+    def __init__(self, by_state):
+        super().__init__(by_state)
+        self.moves = []
+        self.comments = []
+
+    def set_state(self, issue_id, state_id):
+        self.moves.append((issue_id, state_id))
+
+    def add_comment(self, issue_id, body):
+        self.comments.append((issue_id, body))
+
+
+def _review_states():
+    return {"Ready to Dev": "s-ready", "Review": "s-review", "QA": "s-qa",
+            "In Progress": "s-p", "Blocked": "s-b", "Completed": "s-d"}
+
+
+def test_skip_review_label_auto_advances_to_qa_without_dispatch():
+    cfg = make_cfg(_review_states(), concurrency=5)
+    cfg.skip_review_labels = ["docs", "chore"]
+    client = FakeRouter({"s-review": [Issue("i1", "a", "", "s-review", 1, labels=["docs"])]})
+    own = Ownership()
+    calls = []
+    poll_once(client, cfg, own, lambda i, r: calls.append((i.id, r)))
+    assert calls == []                          # no reviewer session launched
+    assert client.moves == [("i1", "s-qa")]     # advanced straight to QA
+    assert own.owns("i1") is False              # never claimed (no session to release)
+    assert "auto-skipped review" in client.comments[0][1].lower()
+
+
+def test_review_runs_when_label_not_in_skip_set():
+    cfg = make_cfg(_review_states(), concurrency=5)
+    cfg.skip_review_labels = ["docs"]
+    client = FakeRouter({"s-review": [Issue("i2", "b", "", "s-review", 2, labels=["feature"])]})
+    own = Ownership()
+    calls = []
+    poll_once(client, cfg, own, lambda i, r: calls.append((i.id, r)))
+    assert calls == [("i2", "reviewer")]        # risky type still reviewed
+    assert client.moves == []
+
+
 # --- rework counting ---
 from dataclasses import dataclass
 from orchestrator.poller import rework_count

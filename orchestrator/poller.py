@@ -5,7 +5,7 @@ import sys
 import time
 
 from orchestrator.config import Config
-from orchestrator.state_machine import role_for_state, READY_TO_DEV
+from orchestrator.state_machine import role_for_state, READY_TO_DEV, REVIEW, QA
 
 # Set by a dispatch when Claude reports a usage/session limit, so the daemon cools down
 # instead of re-dispatching straight into the wall.
@@ -69,6 +69,11 @@ def rework_count(comments) -> int:
     return n
 
 
+def _skip_review(cfg: Config, issue) -> bool:
+    """A low-risk ticket (by work-type label) skips the reviewer session entirely."""
+    return bool(set(cfg.skip_review_labels or []) & set(getattr(issue, "labels", []) or []))
+
+
 def poll_once(client, cfg: Config, ownership: Ownership, dispatch) -> None:
     dep_cache: dict = {}
     for state_name in _ACTIONABLE_ORDER:
@@ -86,6 +91,15 @@ def poll_once(client, cfg: Config, ownership: Ownership, dispatch) -> None:
             if ownership.owns(issue.id):
                 continue
             if state_name == READY_TO_DEV and not dependencies_clear(client, cfg, issue, dep_cache):
+                continue
+            # Low-risk work-type: auto-advance Review -> QA, no reviewer session launched.
+            qa_id = cfg.state_ids.get(QA)
+            if state_name == REVIEW and qa_id and _skip_review(cfg, issue):
+                client.set_state(issue.id, qa_id)
+                client.add_comment(
+                    issue.id,
+                    "**[orchestrator] Review → QA** — auto-skipped review (low-risk work-type "
+                    "label); proceeding to QA.")
                 continue
             ownership.claim(issue.id)
             dispatch(issue, role)
@@ -115,7 +129,7 @@ def run(cfg: Config, *, client=None, dispatch=None, sleep=time.sleep,
                 usage_limit_hit.clear()
                 print("northstar: Claude usage limit hit — cooling down before retrying",
                       file=sys.stderr)
-                sleep(_USAGE_LIMIT_COOLDOWN)
+                sleep(getattr(cfg, "usage_limit_cooldown_seconds", _USAGE_LIMIT_COOLDOWN))
             try:
                 poll_once(client, cfg, ownership, submit)
             except Exception as e:  # noqa: BLE001 — daemon must survive transient errors

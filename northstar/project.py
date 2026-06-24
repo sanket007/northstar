@@ -3,7 +3,7 @@ from pathlib import Path
 import json
 import shutil
 import stat
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import yaml
 from northstar.plane_admin import PlaneAdmin
@@ -88,6 +88,14 @@ class ProjectInputs:
     base_branch: str = "main"
     max_reworks: int = 3
     max_turns: int = 80
+    # auto-continue count after a session hits max_turns (each is a fresh, context-reset
+    # session that resumes from the branch); the throughput dial, raise freely
+    max_turn_retries: int = 4
+    # wall-clock kill per session
+    session_timeout_seconds: int = 1800
+    # work-type labels whose tickets skip the reviewer session (orchestrator auto-advances
+    # Review -> QA). The importer tags each task with a work type; these are the low-risk ones.
+    skip_review_labels: list = field(default_factory=lambda: ["docs", "chore"])
     # Optional self-contained trunk-health command run after each merge (must install deps
     # itself). Off by default — QA already verifies on the integrated branch before merging.
     verify_cmd: str | None = None
@@ -141,6 +149,9 @@ def write_project_config(inp: "ProjectInputs", state_ids: dict, mcp_path: Path,
         "templates_dir": str(templates_dir()),
         "max_concurrency": inp.max_concurrency,
         "max_turns": inp.max_turns,
+        "max_turn_retries": inp.max_turn_retries,
+        "session_timeout_seconds": inp.session_timeout_seconds,
+        "skip_review_labels": list(inp.skip_review_labels),
         "base_branch": inp.base_branch,
         # Off by default: the bare lint/build/test gate is not self-contained (no dep install
         # in a fresh worktree) and false-fails. QA verifies on the integrated branch pre-merge.

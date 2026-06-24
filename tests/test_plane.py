@@ -37,6 +37,22 @@ def test_list_issues_in_state_parses_and_filters():
 
 
 @respx.mock
+def test_list_issues_resolves_label_names():
+    respx.get(f"{PREFIX}/labels/").mock(return_value=httpx.Response(200, json={
+        "results": [{"id": "l1", "name": "docs"}, {"id": "l2", "name": "feature"}],
+        "next_cursor": None,
+    }))
+    respx.get(f"{PREFIX}/work-items/").mock(return_value=httpx.Response(200, json={
+        "results": [
+            {"id": "i1", "name": "Doc it", "description_html": "", "state": "s1",
+             "sequence_id": 7, "labels": ["l1", "unknown"]},
+        ], "next_cursor": None,
+    }))
+    issues = make_client().list_issues_in_state("s1")
+    assert issues[0].labels == ["docs"]  # id resolved to name; unknown ids drop out (fail-safe)
+
+
+@respx.mock
 def test_list_comments_paginates():
     route = respx.get(f"{PREFIX}/work-items/i1/comments/")
     # Real Plane always returns a non-null next_cursor; `next_page_results` ends pagination.

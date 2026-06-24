@@ -166,3 +166,13 @@ app.add_typer(plan_app, name="plan")
 def plan_import(project: str, plan_path: str):
     """Grill a plan and create Plane Draft tasks (interactive)."""
     importer.run_import(project, plan_path)
+
+
+@plan_app.command("relabel")
+def plan_relabel(project: str):
+    """Backfill work-type labels (feature/bug/chore/docs) on existing Plane tickets.
+
+    Read-and-label only — creates no tasks, moves no states. Run this once on a board whose
+    tickets predate work-type routing so the orchestrator can skip review on low-risk types.
+    """
+    importer.run_relabel(project)
