@@ -25,6 +25,15 @@ def log_path(name: str) -> Path:
     return logs_dir() / f"{name}.log"
 
 
+def mcp_dir() -> Path:
+    return home() / "mcp"
+
+
+def plane_mcp_path(name: str) -> Path:
+    """Per-project Plane MCP config (literal creds), so Claude needn't expand ${VAR}."""
+    return mcp_dir() / f"{name}.json"
+
+
 def machine_config_path() -> Path:
     return home() / "config.yaml"
 

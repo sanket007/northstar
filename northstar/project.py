@@ -93,6 +93,33 @@ class ProjectInputs:
     plane_identifier: str = ""
 
 
+def write_plane_mcp(name: str, plane_env: dict) -> Path:
+    """Write a per-project Plane MCP config with literal credentials.
+
+    Claude Code does not reliably expand ${VAR} placeholders into a spawned MCP server's
+    environment, so we bake the real values in. Lives at ~/.northstar/mcp/<name>.json — same
+    trust level as the project config, which already stores the API key in plaintext.
+    """
+    cfg = {
+        "mcpServers": {
+            "plane": {
+                "command": "uvx",
+                "args": ["plane-mcp-server", "stdio"],
+                "env": {
+                    "PLANE_API_KEY": plane_env.get("PLANE_API_KEY", ""),
+                    "PLANE_WORKSPACE_SLUG": plane_env.get("PLANE_WORKSPACE_SLUG", ""),
+                    # strip trailing slash so the server doesn't build //api/... URLs
+                    "PLANE_BASE_URL": plane_env.get("PLANE_BASE_URL", "").rstrip("/"),
+                },
+            }
+        }
+    }
+    out = paths.plane_mcp_path(name)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(cfg, indent=2))
+    return out
+
+
 def write_project_config(inp: "ProjectInputs", state_ids: dict, mcp_path: Path,
                          project_id: str, lint_cmd: str | None = None) -> Path:
     lint = inp.lint_cmd if lint_cmd is None else lint_cmd
@@ -155,7 +182,13 @@ def add_project(inp: "ProjectInputs", *, runner=run, create_if_missing=False, ad
             lint_cmd = f"{spec.check_cmd} && {inp.lint_cmd}" if inp.lint_cmd else spec.check_cmd
 
     install_guardrails(inp.repo_dir, inp.name, lint_cmd, inp.build_cmd, inp.test_cmd)
-    mcp_path = paths.home() / "plane-mcp.json"
+    # Per-project MCP config with literal Plane creds (Claude doesn't expand ${VAR} into
+    # a spawned server's env), so the Plane MCP server is reachable in plan import + sessions.
+    mcp_path = write_plane_mcp(inp.name, {
+        "PLANE_API_KEY": inp.plane_api_key,
+        "PLANE_BASE_URL": inp.plane_base_url,
+        "PLANE_WORKSPACE_SLUG": inp.plane_workspace_slug,
+    })
     write_project_config(inp, state_ids, mcp_path, project_id, lint_cmd=lint_cmd)
     meta = {"github_repo": inp.github_repo, "repo_dir": str(inp.repo_dir),
             "plane_project_id": project_id, "formatting": fmt_language}

@@ -186,3 +186,37 @@ def test_add_project_skips_formatting_when_disabled(tmp_path, monkeypatch):
     import yaml
     data = yaml.safe_load(paths.project_config_path("acme").read_text())
     assert "ruff" not in data["verify_cmd"]
+
+
+def test_write_plane_mcp_bakes_literal_creds(tmp_path, monkeypatch):
+    monkeypatch.setenv("NORTHSTAR_HOME", str(tmp_path / ".northstar"))
+    import northstar.paths as paths; importlib.reload(paths)
+    from northstar import project
+    p = project.write_plane_mcp("acme", {
+        "PLANE_API_KEY": "secret-key", "PLANE_BASE_URL": "https://plane.x",
+        "PLANE_WORKSPACE_SLUG": "w"})
+    data = json.loads(p.read_text())
+    server = data["mcpServers"]["plane"]
+    assert server["command"] == "uvx" and server["args"] == ["plane-mcp-server", "stdio"]
+    assert server["env"]["PLANE_API_KEY"] == "secret-key"      # literal, not a placeholder
+    assert "${" not in json.dumps(data)                         # no unexpanded ${VAR}
+
+
+def test_add_project_points_at_literal_per_project_mcp(tmp_path, monkeypatch):
+    monkeypatch.setenv("NORTHSTAR_HOME", str(tmp_path / ".northstar"))
+    monkeypatch.delenv("NORTHSTAR_ASSETS_DIR", raising=False)
+    import northstar.paths as paths; importlib.reload(paths)
+    from northstar import project
+    repo = tmp_path / "repo"; (repo / "docs").mkdir(parents=True)
+    inp = project.ProjectInputs(
+        name="acme", plane_base_url="https://x", plane_api_key="k", plane_workspace_slug="w",
+        plane_project_id="p", github_repo="o/acme", repo_dir=repo,
+        lint_cmd="make lint", build_cmd="make build", test_cmd="make test",
+        enforce_formatting=False)
+    project.add_project(inp, runner=lambda cmd, **kw: CommandResult(0, "", ""), admin=FakeAdmin())
+    import yaml
+    data = yaml.safe_load(paths.project_config_path("acme").read_text())
+    mcp_path = data["mcp_config_path"]
+    assert mcp_path.endswith("mcp/acme.json")                  # per-project, not the shared one
+    mcp = json.loads(open(mcp_path).read())
+    assert mcp["mcpServers"]["plane"]["env"]["PLANE_API_KEY"] == "k"
