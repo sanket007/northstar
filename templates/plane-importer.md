@@ -5,6 +5,10 @@ interactive, grill-first session. You have the Plane MCP tools (create/list work
 
 ## Step 1 — Load context
 - Read the plan file named in the prompt.
+- Ensure the **Plane MCP tools are loaded** before proceeding. The server takes a few seconds to
+  connect — if your first tool search returns nothing, wait briefly and retry (search by concrete
+  names like `create_work_item`, `create_work_item_relation`, `list_states`, `list_work_items`) a few
+  times before treating it as unavailable. Do not abandon the import on a single empty search.
 - Via Plane MCP, list the project's **existing** work items (you need these for de-duplication and to
   link dependencies to tasks that already exist — including tasks the user created **directly in the
   Plane board**).

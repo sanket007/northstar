@@ -42,6 +42,13 @@ and never weaken a rule to get past the gate.
 Your specific role (builder / reviewer / QA) and its steps are provided in the session's system
 prompt. Honor the board state machine.
 
+## Plane MCP readiness
+The Plane MCP server is launched with this session but can take a few seconds to connect and register
+its tools. If a tool search for Plane tools comes back empty at first, the server is still connecting —
+**wait a moment and retry the search a few times** (search by concrete tool names like
+`create_work_item`, `create_work_item_relation`, `list_states`, `list_work_items`) before concluding it
+is unavailable. It exposes a large toolset; the tools you need are there once it finishes connecting.
+
 ## Comment format (no emojis, ever)
 Ticket comments are plain Markdown — readable, scannable, and lean. Never use emojis anywhere.
 Shape every comment as:
