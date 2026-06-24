@@ -159,12 +159,13 @@ def test_add_project_enforces_formatting_for_detected_language(tmp_path, monkeyp
                                admin=FakeAdmin())
     assert meta["formatting"] == "python"
     assert (repo / "ruff.toml").exists()
-    import yaml
-    data = yaml.safe_load(paths.project_config_path("acme").read_text())
-    assert "ruff" in data["verify_cmd"] and "make lint" in data["verify_cmd"]
+    # format+lint is folded into the COMMIT gate (the hook); verify_cmd stays off by default
     hook = json.loads((repo / ".claude" / "settings.json").read_text())
     cmd = hook["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
-    assert "ruff check" in cmd                    # format+lint folded into the commit gate
+    assert "ruff check" in cmd
+    import yaml
+    data = yaml.safe_load(paths.project_config_path("acme").read_text())
+    assert data["verify_cmd"] is None             # not auto-populated (avoids false-RED)
 
 
 def test_add_project_skips_formatting_when_disabled(tmp_path, monkeypatch):
@@ -185,7 +186,7 @@ def test_add_project_skips_formatting_when_disabled(tmp_path, monkeypatch):
     assert not (repo / "ruff.toml").exists()
     import yaml
     data = yaml.safe_load(paths.project_config_path("acme").read_text())
-    assert "ruff" not in data["verify_cmd"]
+    assert data["verify_cmd"] is None
 
 
 def test_write_plane_mcp_bakes_literal_creds(tmp_path, monkeypatch):

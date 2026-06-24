@@ -24,6 +24,7 @@ def test_build_command_drops_worktree_and_trims_prompt(tmp_path):
     assert "--strict-mcp-config" in cmd  # only the Plane server, no personal-MCP contention
     p = cmd[cmd.index("-p") + 1]
     assert "i1" in p and "builder" in p
+    assert "project p" in p  # project id handed to the session (cfg.plane_project_id == "p")
     assert "hydrat" not in p.lower() and "comment" not in p.lower()  # prompt no longer restates hydration
 
 

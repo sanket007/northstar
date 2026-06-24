@@ -88,6 +88,9 @@ class ProjectInputs:
     base_branch: str = "main"
     max_reworks: int = 3
     max_turns: int = 80
+    # Optional self-contained trunk-health command run after each merge (must install deps
+    # itself). Off by default — QA already verifies on the integrated branch before merging.
+    verify_cmd: str | None = None
     enforce_formatting: bool = True
     plane_new_project: bool = False
     plane_project_name: str = ""
@@ -122,8 +125,7 @@ def write_plane_mcp(name: str, plane_env: dict) -> Path:
 
 
 def write_project_config(inp: "ProjectInputs", state_ids: dict, mcp_path: Path,
-                         project_id: str, lint_cmd: str | None = None) -> Path:
-    lint = inp.lint_cmd if lint_cmd is None else lint_cmd
+                         project_id: str) -> Path:
     cfg = {
         "plane_base_url": inp.plane_base_url,
         "plane_api_key": inp.plane_api_key,
@@ -140,8 +142,10 @@ def write_project_config(inp: "ProjectInputs", state_ids: dict, mcp_path: Path,
         "max_concurrency": inp.max_concurrency,
         "max_turns": inp.max_turns,
         "base_branch": inp.base_branch,
-        # trunk-health gate run after each merge: (format+)lint + build + test, whichever are set
-        "verify_cmd": " && ".join(c for c in (lint, inp.build_cmd, inp.test_cmd) if c),
+        # Off by default: the bare lint/build/test gate is not self-contained (no dep install
+        # in a fresh worktree) and false-fails. QA verifies on the integrated branch pre-merge.
+        # Set a self-contained command here (that installs deps) to enable the post-merge check.
+        "verify_cmd": inp.verify_cmd,
         "max_reworks": inp.max_reworks,
         "state_ids": state_ids,
     }
@@ -191,7 +195,7 @@ def add_project(inp: "ProjectInputs", *, runner=run, create_if_missing=False, ad
         "PLANE_BASE_URL": inp.plane_base_url,
         "PLANE_WORKSPACE_SLUG": inp.plane_workspace_slug,
     })
-    write_project_config(inp, state_ids, mcp_path, project_id, lint_cmd=lint_cmd)
+    write_project_config(inp, state_ids, mcp_path, project_id)
     meta = {"github_repo": inp.github_repo, "repo_dir": str(inp.repo_dir),
             "plane_project_id": project_id, "formatting": fmt_language}
     paths.register_project(inp.name, meta)

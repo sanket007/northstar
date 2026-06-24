@@ -33,7 +33,10 @@ def _role_doc_text(cfg: Config, role: str) -> str:
 
 def build_claude_command(cfg: Config, role: str, ticket_id: str,
                          role_doc_text: str) -> list[str]:
-    prompt = f"You are the {role} for Plane work item {ticket_id}. Follow your role instructions."
+    # Hand the session the Plane project id up front so it doesn't waste turns calling
+    # list_projects to rediscover it every time.
+    prompt = (f"You are the {role} for Plane work item {ticket_id} in Plane project "
+              f"{cfg.plane_project_id}. Follow your role instructions.")
     return [
         cfg.claude_binary, "-p", prompt,
         "--output-format", "stream-json", "--verbose",
