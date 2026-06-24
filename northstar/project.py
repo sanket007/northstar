@@ -87,6 +87,7 @@ class ProjectInputs:
     max_concurrency: int = 1
     base_branch: str = "main"
     max_reworks: int = 3
+    max_turns: int = 80
     enforce_formatting: bool = True
     plane_new_project: bool = False
     plane_project_name: str = ""
@@ -137,6 +138,7 @@ def write_project_config(inp: "ProjectInputs", state_ids: dict, mcp_path: Path,
         "mcp_config_path": str(mcp_path),
         "templates_dir": str(templates_dir()),
         "max_concurrency": inp.max_concurrency,
+        "max_turns": inp.max_turns,
         "base_branch": inp.base_branch,
         # trunk-health gate run after each merge: (format+)lint + build + test, whichever are set
         "verify_cmd": " && ".join(c for c in (lint, inp.build_cmd, inp.test_cmd) if c),

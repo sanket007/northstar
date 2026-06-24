@@ -10,6 +10,14 @@ from orchestrator.worktree import create_worktree, remove_worktree
 from orchestrator.launcher import run_session
 from orchestrator.health import verify_main
 
+# marker for orchestrator-posted continuation notes after a session hit max_turns
+_CONTINUE_MARKER = "continuing after reaching the turn limit"
+
+
+def _continuations(comments) -> int:
+    return sum(1 for c in comments
+               if _CONTINUE_MARKER in (getattr(c, "body_html", "") or "").lower())
+
 
 def make_dispatch(cfg: Config, ownership: Ownership, *, run=run_session,
                   mk_worktree=create_worktree, rm_worktree=remove_worktree,
@@ -29,12 +37,14 @@ def make_dispatch(cfg: Config, ownership: Ownership, *, run=run_session,
             pass
 
     def dispatch(issue: Issue, role: str) -> None:
+        # One read of the trail, used for both the rework cap and the max-turns retry count.
+        try:
+            comments = plane.list_comments(issue.id)
+        except Exception:
+            comments = []
         # Rework cap: a ticket that has thrashed through too many reviewer/QA bounces is
         # parked for a human instead of looping forever and burning the budget.
-        try:
-            rounds = rework_count(plane.list_comments(issue.id))
-        except Exception:
-            rounds = 0
+        rounds = rework_count(comments)
         if rounds >= cfg.max_reworks:
             obs.info("orchestrator", f"{issue.id}: {rounds} rework rounds ≥ cap; blocking")
             _block(issue.id, f"exceeded {cfg.max_reworks} rework rounds — needs human attention")
@@ -61,7 +71,21 @@ def make_dispatch(cfg: Config, ownership: Ownership, *, run=run_session,
                 except Exception:
                     pass
             if failure is not None:
-                _block(issue.id, failure)
+                # A session that ran out of turns usually made progress — let it continue
+                # in a fresh session (bounded), instead of blocking, since the next poll
+                # re-picks the ticket up from its current state.
+                if "max_turns" in failure and _continuations(comments) < cfg.max_turn_retries:
+                    try:
+                        plane.add_comment(
+                            issue.id,
+                            f"**[orchestrator] continuing after reaching the turn limit** — the "
+                            f"{role} session hit max_turns ({cfg.max_turns}) with progress made; "
+                            "re-queuing to continue where it left off.")
+                    except Exception:
+                        pass
+                    obs.info("orchestrator", f"{issue.id}: max_turns — re-queuing to continue")
+                else:
+                    _block(issue.id, failure)
             elif role == "qa":
                 # QA just merged — independently confirm trunk is still green.
                 try:

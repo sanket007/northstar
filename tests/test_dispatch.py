@@ -142,6 +142,37 @@ def test_rework_cap_blocks_thrashing_ticket_without_running(tmp_path):
     assert own.owns("i1") is False
 
 
+def test_max_turns_requeues_instead_of_blocking(tmp_path):
+    cfg = make_cfg(tmp_path, max_turn_retries=1)
+    own = Ownership(); own.claim("i1")
+    fake_plane = FakePlane()  # no prior continuations on the trail
+
+    dispatch = make_dispatch(
+        cfg, own, run=lambda c, r, t, w: SessionResult(ok=False, error="error_max_turns"),
+        mk_worktree=_mk, rm_worktree=lambda r, w: None, plane=fake_plane)
+    dispatch(Issue("i1", "a", "", "s-inprog", 7), "builder")
+
+    assert fake_plane.states == []                       # NOT blocked
+    assert "continuing after reaching the turn limit" in fake_plane.comments[0][1].lower()
+    assert own.owns("i1") is False                       # released -> next poll re-picks it up
+
+
+def test_max_turns_blocks_after_retries_exhausted(tmp_path):
+    cfg = make_cfg(tmp_path, max_turn_retries=1)
+    own = Ownership(); own.claim("i1")
+    # one continuation already happened -> at the limit -> must block now
+    fake_plane = FakePlane(comments=[
+        "**[orchestrator] continuing after reaching the turn limit** — earlier attempt"])
+
+    dispatch = make_dispatch(
+        cfg, own, run=lambda c, r, t, w: SessionResult(ok=False, error="error_max_turns"),
+        mk_worktree=_mk, rm_worktree=lambda r, w: None, plane=fake_plane)
+    dispatch(Issue("i1", "a", "", "s-inprog", 7), "builder")
+
+    assert fake_plane.states == [("i1", "s-blocked")]    # blocked this time
+    assert own.owns("i1") is False
+
+
 def test_qa_success_runs_main_health_and_alerts_when_red(tmp_path):
     cfg = make_cfg(tmp_path)
     own = Ownership()
