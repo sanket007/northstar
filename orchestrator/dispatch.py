@@ -5,7 +5,7 @@ import threading
 from orchestrator import obs
 from orchestrator.config import Config
 from orchestrator.plane import Issue, PlaneClient
-from orchestrator.poller import Ownership, rework_count
+from orchestrator.poller import Ownership, rework_count, usage_limit_hit
 from orchestrator.worktree import create_worktree, remove_worktree
 from orchestrator.launcher import run_session
 from orchestrator.health import verify_main
@@ -70,7 +70,13 @@ def make_dispatch(cfg: Config, ownership: Ownership, *, run=run_session,
                         rm_worktree(cfg.repo_dir, worktree)
                 except Exception:
                     pass
-            if failure is not None:
+            if failure == "usage_limit":
+                # Claude hit the plan's usage/session limit — the session did no work. Don't
+                # block and don't loop; trip the daemon cooldown and leave the ticket as-is.
+                obs.info("orchestrator", f"{issue.id}: Claude usage limit hit — pausing daemon "
+                                         "(switch model or wait for reset)")
+                usage_limit_hit.set()
+            elif failure is not None:
                 # A session that ran out of turns usually made progress — let it continue
                 # in a fresh session (bounded), instead of blocking, since the next poll
                 # re-picks the ticket up from its current state.

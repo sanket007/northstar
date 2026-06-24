@@ -55,6 +55,16 @@ def test_parse_stream_json_no_result_is_failure():
     assert "no result" in (res.error or "").lower()
 
 
+def test_parse_stream_json_detects_usage_limit():
+    # Claude prints the limit notice then exits result=success having done nothing
+    lines = [
+        '{"type":"assistant","message":{"content":[{"type":"text","text":"You\\u2019ve hit your session limit, resets 11:30pm"}]}}',
+        '{"type":"result","subtype":"success","is_error":false}',
+    ]
+    res = parse_stream_json(lines)
+    assert res.ok is False and res.error == "usage_limit"
+
+
 def test_run_session_timeout_returns_failure(tmp_path):
     """When the subprocess times out, run_session returns SessionResult(ok=False, error='session timeout')."""
     cfg = make_cfg(tmp_path)

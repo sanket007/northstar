@@ -1,11 +1,16 @@
 from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
-from threading import Lock
+from threading import Event, Lock
 import sys
 import time
 
 from orchestrator.config import Config
 from orchestrator.state_machine import role_for_state, READY_TO_DEV
+
+# Set by a dispatch when Claude reports a usage/session limit, so the daemon cools down
+# instead of re-dispatching straight into the wall.
+usage_limit_hit = Event()
+_USAGE_LIMIT_COOLDOWN = 900  # seconds
 
 
 class Ownership:
@@ -106,6 +111,11 @@ def run(cfg: Config, *, client=None, dispatch=None, sleep=time.sleep,
     i = 0
     try:
         while max_iterations is None or i < max_iterations:
+            if usage_limit_hit.is_set():
+                usage_limit_hit.clear()
+                print("northstar: Claude usage limit hit — cooling down before retrying",
+                      file=sys.stderr)
+                sleep(_USAGE_LIMIT_COOLDOWN)
             try:
                 poll_once(client, cfg, ownership, submit)
             except Exception as e:  # noqa: BLE001 — daemon must survive transient errors

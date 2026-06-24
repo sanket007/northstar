@@ -51,8 +51,17 @@ def build_claude_command(cfg: Config, role: str, ticket_id: str,
     ]
 
 
+_LIMIT_PHRASES = ("session limit", "usage limit", "hit your limit", "limit reached")
+
+
+def _is_usage_limit(text: str) -> bool:
+    t = (text or "").lower()
+    return any(p in t for p in _LIMIT_PHRASES)
+
+
 def parse_stream_json(lines: Iterable[str]) -> SessionResult:
     saw_result = False
+    limit_hit = False
     for line in lines:
         line = line.strip()
         if not line:
@@ -61,11 +70,21 @@ def parse_stream_json(lines: Iterable[str]) -> SessionResult:
             obj = json.loads(line)
         except json.JSONDecodeError:
             continue
+        if obj.get("type") == "assistant":
+            for b in obj.get("message", {}).get("content", []):
+                if b.get("type") == "text" and _is_usage_limit(b.get("text", "")):
+                    limit_hit = True
         if obj.get("type") == "result":
             saw_result = True
+            # Claude prints the usage-limit notice then exits result=success having done nothing —
+            # surface it as its own error so the daemon pauses instead of looping into the wall.
+            if limit_hit:
+                return SessionResult(ok=False, error="usage_limit")
             if obj.get("is_error"):
                 return SessionResult(ok=False, error=obj.get("subtype", "error"))
             return SessionResult(ok=True, error=None)
+    if limit_hit:
+        return SessionResult(ok=False, error="usage_limit")
     if not saw_result:
         return SessionResult(ok=False, error="session ended with no result event")
     return SessionResult(ok=False, error="unknown")

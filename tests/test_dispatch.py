@@ -173,6 +173,24 @@ def test_max_turns_blocks_after_retries_exhausted(tmp_path):
     assert own.owns("i1") is False
 
 
+def test_usage_limit_pauses_daemon_not_blocks(tmp_path):
+    from orchestrator.poller import usage_limit_hit
+    usage_limit_hit.clear()
+    cfg = make_cfg(tmp_path)
+    own = Ownership(); own.claim("i1")
+    fake_plane = FakePlane()
+
+    dispatch = make_dispatch(
+        cfg, own, run=lambda c, r, t, w: SessionResult(ok=False, error="usage_limit"),
+        mk_worktree=_mk, rm_worktree=lambda r, w: None, plane=fake_plane)
+    dispatch(Issue("i1", "a", "", "s-inprog", 7), "builder")
+
+    assert fake_plane.states == []          # NOT blocked
+    assert usage_limit_hit.is_set()         # daemon cooldown tripped
+    assert own.owns("i1") is False
+    usage_limit_hit.clear()
+
+
 def test_qa_success_runs_main_health_and_alerts_when_red(tmp_path):
     cfg = make_cfg(tmp_path)
     own = Ownership()
