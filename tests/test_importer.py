@@ -5,6 +5,7 @@ def test_build_import_command():
     cmd = importer.build_import_command("claude", "/h/plane-mcp.json", "DOC TEXT", "plan.md", "proj1")
     assert cmd[0] == "claude"
     assert "--dangerously-skip-permissions" in cmd
+    assert "--strict-mcp-config" in cmd
     assert "--mcp-config" in cmd and "/h/plane-mcp.json" in cmd
     assert "--append-system-prompt" in cmd and "DOC TEXT" in cmd
     initial = cmd[-1]

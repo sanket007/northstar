@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 import json
+import os
 import subprocess
 import threading
 import time
@@ -38,6 +39,9 @@ def build_claude_command(cfg: Config, role: str, ticket_id: str,
         "--output-format", "stream-json", "--verbose",
         "--dangerously-skip-permissions",
         "--mcp-config", str(cfg.mcp_config_path),
+        # only the Plane server — ignore the user's personal MCP servers so it connects
+        # fast without contention and never blocks on an unrelated server needing auth
+        "--strict-mcp-config",
         "--model", cfg.claude_model,
         "--max-turns", str(cfg.max_turns),
         "--append-system-prompt", role_doc_text,
@@ -112,8 +116,9 @@ def run_session(cfg: Config, role: str, ticket_id: str, worktree: Path,
     started = time.monotonic()
     # Line-buffered text pipe so the reader thread sees each stream-json event as it lands,
     # giving real-time visibility into what the session is doing (in `northstar logs`).
+    env = {**os.environ, "MCP_TIMEOUT": "30000", "MCP_TOOL_TIMEOUT": "60000"}
     proc = runner(cmd, cwd=str(worktree), stdout=subprocess.PIPE,
-                  stderr=subprocess.STDOUT, text=True, bufsize=1)
+                  stderr=subprocess.STDOUT, text=True, bufsize=1, env=env)
     lines: list[str] = []
     pump = threading.Thread(target=_pump_stream,
                             args=(getattr(proc, "stdout", None), role, ticket_id, lines),
