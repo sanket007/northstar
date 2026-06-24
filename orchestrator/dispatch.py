@@ -36,6 +36,9 @@ def ticket_context(cfg: Config, issue, comments) -> str:
         f"- Current state: {id_to_name.get(issue.state_id, '?')}",
         "- State name -> id (for update_work_item transitions):",
     ]
+    labels = getattr(issue, "labels", None)
+    if labels:
+        lines.insert(5, f"- Labels (work type): {', '.join(labels)}")
     lines += [f"    {n}: {i}" for n, i in cfg.state_ids.items()]
     desc = _strip_html(getattr(issue, "description_html", ""))
     if desc:

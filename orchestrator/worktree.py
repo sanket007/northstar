@@ -27,11 +27,18 @@ def create_worktree(repo_dir: Path, worktrees_root: Path, slug: str,
     _git(repo_dir, "worktree", "prune", check=False)
     if wt_path.exists():
         shutil.rmtree(wt_path, ignore_errors=True)
-    # Branch from the latest trunk so a sibling task that merged while we were queued
-    # doesn't leave us building on a stale base. Fall back to local HEAD when there's
-    # no remote (e.g. a brand-new local-only repo) so we never hard-fail on fetch.
-    fetched = _git(repo_dir, "fetch", "origin", base_branch, check=False).returncode == 0
-    if fetched:
+    # Resume from a prior session's pushed work if it exists, else branch fresh from trunk.
+    # A max_turns continuation re-runs this same slug; reusing origin/<branch> lets the new
+    # session pick up the committed progress instead of restarting from scratch (and avoids
+    # a banned force-push when it later pushes to the same branch). Fetch the trunk too so a
+    # sibling merge while we were queued doesn't leave us on a stale base. Fall back to local
+    # HEAD when there's no remote (brand-new local-only repo) so we never hard-fail on fetch.
+    fetched_base = _git(repo_dir, "fetch", "origin", base_branch, check=False).returncode == 0
+    has_wip = _git(repo_dir, "fetch", "origin", branch, check=False).returncode == 0
+    if has_wip:
+        obs.info("git", f"resuming {branch} from pushed progress (origin/{branch})")
+        _git(repo_dir, "worktree", "add", "-B", branch, str(wt_path), f"origin/{branch}")
+    elif fetched_base:
         _git(repo_dir, "worktree", "add", "-B", branch, str(wt_path), f"origin/{base_branch}")
     else:
         obs.info("git", f"no origin/{base_branch} to fetch; branching {branch} from local HEAD")

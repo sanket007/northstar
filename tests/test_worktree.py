@@ -51,3 +51,26 @@ def test_create_worktree_branches_from_fresh_origin_main(tmp_path):
 
     wt = create_worktree(repo, tmp_path / "wt", "x-builder", base_branch="main")
     assert (wt / "LATEST.txt").exists()  # built on fresh trunk, not stale local HEAD
+
+
+def test_create_worktree_resumes_pushed_wip(tmp_path):
+    # A prior session pushed progress to origin/agent/x-builder; a max_turns continuation
+    # must resume from it, not reset the branch back to trunk (which would lose the work).
+    origin = tmp_path / "origin.git"
+    subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(origin)], check=True)
+    seed = tmp_path / "seed"
+    subprocess.run(["git", "clone", "-q", str(origin), str(seed)], check=True)
+    (seed / "README.md").write_text("seed\n")
+    _git(seed, "add", "."); _git(seed, "commit", "-qm", "init"); _git(seed, "push", "-q", "origin", "main")
+
+    # prior session's pushed WIP on the agent branch
+    _git(seed, "checkout", "-qb", "agent/x-builder")
+    (seed / "WIP.txt").write_text("partial progress\n")
+    _git(seed, "add", "."); _git(seed, "commit", "-qm", "wip")
+    _git(seed, "push", "-q", "origin", "agent/x-builder")
+
+    repo = tmp_path / "repo"
+    subprocess.run(["git", "clone", "-q", str(origin), str(repo)], check=True)
+
+    wt = create_worktree(repo, tmp_path / "wt", "x-builder", base_branch="main")
+    assert (wt / "WIP.txt").exists()  # resumed from pushed progress, not reset to trunk

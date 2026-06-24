@@ -12,6 +12,37 @@ def test_build_import_command():
     assert "plan.md" in initial and "proj1" in initial
 
 
+def test_build_relabel_command():
+    cmd = importer.build_relabel_command("claude", "/h/plane-mcp.json", "RELABEL DOC", "proj1")
+    assert cmd[0] == "claude"
+    assert "--strict-mcp-config" in cmd
+    assert "--mcp-config" in cmd and "/h/plane-mcp.json" in cmd
+    assert "--append-system-prompt" in cmd and "RELABEL DOC" in cmd
+    initial = cmd[-1]
+    assert "proj1" in initial and "relabel" in initial.lower()
+
+
+def test_run_relabel_uses_project_env_and_repo(tmp_path, monkeypatch):
+    monkeypatch.setenv("NORTHSTAR_HOME", str(tmp_path / ".northstar"))
+    monkeypatch.delenv("NORTHSTAR_ASSETS_DIR", raising=False)
+    import northstar.paths as paths; importlib_reload(paths)
+    paths.ensure_dirs(); paths.register_project("acme", {"repo_dir": str(tmp_path / "repo")})
+    (tmp_path / "repo").mkdir()
+    paths.project_config_path("acme").write_text(
+        "plane_api_key: K\nplane_base_url: https://x\nplane_workspace_slug: w\n"
+        "plane_project_id: proj1\nrepo_dir: " + str(tmp_path / "repo") +
+        "\nmcp_config_path: /h/m.json\nclaude_binary: claude\n")
+    seen = {}
+    def fake_runner(cmd, **kw):
+        seen["cmd"] = cmd; seen["env"] = kw.get("env"); seen["cwd"] = kw.get("cwd")
+        class R: returncode = 0
+        return R()
+    importer.run_relabel("acme", runner=fake_runner)
+    assert seen["cwd"] == str(tmp_path / "repo")
+    assert seen["env"]["PLANE_API_KEY"] == "K"
+    assert "proj1" in seen["cmd"][-1]
+
+
 def test_run_import_uses_project_env_and_repo(tmp_path, monkeypatch):
     monkeypatch.setenv("NORTHSTAR_HOME", str(tmp_path / ".northstar"))
     monkeypatch.delenv("NORTHSTAR_ASSETS_DIR", raising=False)

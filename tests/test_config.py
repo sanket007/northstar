@@ -35,7 +35,9 @@ def test_load_config_parses_all_fields(tmp_path):
     # optional fields default when not in yaml
     assert cfg.session_timeout_seconds == 1800
     assert cfg.max_turns == 80
-    assert cfg.max_turn_retries == 1
+    assert cfg.max_turn_retries == 4
+    assert cfg.usage_limit_cooldown_seconds == 900
+    assert cfg.skip_review_labels == []
 
 
 def test_load_config_optional_turn_time_cap(tmp_path):
