@@ -1,5 +1,5 @@
 from __future__ import annotations
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 import yaml
 
@@ -31,6 +31,8 @@ class Config:
     # how many times a ticket may auto-continue after a session hits max_turns
     # (progress is usually made) before it is parked in Blocked for a human
     max_turn_retries: int = 1
+    # per-role model overrides (e.g. {"reviewer": "claude-opus-4-8"}); falls back to claude_model
+    role_models: dict = field(default_factory=dict)
     base_branch: str = "main"
     # Shell command that must pass for trunk to be considered healthy after a merge.
     # When None, the post-merge main-health check is skipped.
@@ -63,6 +65,7 @@ def load_config(path: Path) -> Config:
         session_timeout_seconds=int(data.get("session_timeout_seconds", 1800)),
         max_turns=int(data.get("max_turns", 80)),
         max_turn_retries=int(data.get("max_turn_retries", 1)),
+        role_models=dict(data.get("role_models", {})),
         base_branch=data.get("base_branch", "main"),
         verify_cmd=data.get("verify_cmd"),
         max_reworks=int(data.get("max_reworks", 3)),

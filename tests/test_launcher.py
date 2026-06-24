@@ -28,6 +28,17 @@ def test_build_command_drops_worktree_and_trims_prompt(tmp_path):
     assert "hydrat" not in p.lower() and "comment" not in p.lower()  # prompt no longer restates hydration
 
 
+def test_per_role_model_override_and_context(tmp_path):
+    from orchestrator.launcher import build_claude_command, model_for_role
+    cfg = make_cfg(tmp_path)
+    cfg.role_models = {"reviewer": "claude-opus-4-8"}
+    assert model_for_role(cfg, "reviewer") == "claude-opus-4-8"
+    assert model_for_role(cfg, "builder") == cfg.claude_model      # falls back
+    cmd = build_claude_command(cfg, "reviewer", "i1", "doc", "CTX-BLOCK-XYZ")
+    assert cmd[cmd.index("--model") + 1] == "claude-opus-4-8"
+    assert "CTX-BLOCK-XYZ" in cmd[cmd.index("-p") + 1]             # context injected into prompt
+
+
 def test_role_doc_path(tmp_path):
     cfg = make_cfg(tmp_path)
     assert role_doc_path(cfg, "qa") == cfg.templates_dir / "qa.md"

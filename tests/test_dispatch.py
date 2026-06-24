@@ -58,7 +58,7 @@ def test_dispatch_runs_session_then_cleans_up_and_releases(tmp_path):
     def fake_rm(repo_dir, wt):
         events.append(("rm", wt.name))
 
-    def fake_run(cfg, role, ticket_id, worktree):
+    def fake_run(cfg, role, ticket_id, worktree, **k):
         events.append(("run", role, ticket_id))
         return SessionResult(ok=True)
 
@@ -81,7 +81,7 @@ def test_dispatch_releases_ownership_and_blocks_on_session_error(tmp_path):
     own.claim("i1")
     fake_plane = FakePlane()
 
-    def fake_run(cfg, role, ticket_id, worktree):
+    def fake_run(cfg, role, ticket_id, worktree, **k):
         return SessionResult(ok=False, error="boom")
 
     dispatch = make_dispatch(cfg, own, run=fake_run, mk_worktree=_mk,
@@ -103,7 +103,7 @@ def test_dispatch_releases_and_blocks_on_exception(tmp_path):
     own.claim("i1")
     fake_plane = FakePlane()
 
-    def fake_run(cfg, role, ticket_id, worktree):
+    def fake_run(cfg, role, ticket_id, worktree, **k):
         raise RuntimeError("unexpected crash")
 
     dispatch = make_dispatch(cfg, own, run=fake_run, mk_worktree=_mk,
@@ -128,7 +128,7 @@ def test_rework_cap_blocks_thrashing_ticket_without_running(tmp_path):
     ])
     ran = []
 
-    def fake_run(cfg, role, ticket_id, worktree):
+    def fake_run(cfg, role, ticket_id, worktree, **k):
         ran.append(ticket_id)
         return SessionResult(ok=True)
 
@@ -148,7 +148,7 @@ def test_max_turns_requeues_instead_of_blocking(tmp_path):
     fake_plane = FakePlane()  # no prior continuations on the trail
 
     dispatch = make_dispatch(
-        cfg, own, run=lambda c, r, t, w: SessionResult(ok=False, error="error_max_turns"),
+        cfg, own, run=lambda c, r, t, w, **k: SessionResult(ok=False, error="error_max_turns"),
         mk_worktree=_mk, rm_worktree=lambda r, w: None, plane=fake_plane)
     dispatch(Issue("i1", "a", "", "s-inprog", 7), "builder")
 
@@ -165,12 +165,22 @@ def test_max_turns_blocks_after_retries_exhausted(tmp_path):
         "**[orchestrator] continuing after reaching the turn limit** — earlier attempt"])
 
     dispatch = make_dispatch(
-        cfg, own, run=lambda c, r, t, w: SessionResult(ok=False, error="error_max_turns"),
+        cfg, own, run=lambda c, r, t, w, **k: SessionResult(ok=False, error="error_max_turns"),
         mk_worktree=_mk, rm_worktree=lambda r, w: None, plane=fake_plane)
     dispatch(Issue("i1", "a", "", "s-inprog", 7), "builder")
 
     assert fake_plane.states == [("i1", "s-blocked")]    # blocked this time
     assert own.owns("i1") is False
+
+
+def test_ticket_context_built_from_held_data(tmp_path):
+    from orchestrator.dispatch import ticket_context
+    cfg = make_cfg(tmp_path, state_ids={"In Progress": "sip", "Review": "srev", "Blocked": "s-blocked"})
+    issue = Issue("u1", "My Task", "<p>AC: do X</p>", "sip", 7)
+    ctx = ticket_context(cfg, issue, [FakeComment("<p>note one</p>")])
+    assert "My Task" in ctx and "In Progress" in ctx and "AC: do X" in ctx
+    assert "note one" in ctx and "sip" in ctx          # comment + state-id map present
+    assert "do not re-fetch" in ctx.lower() and "only to write" in ctx.lower()
 
 
 def test_usage_limit_pauses_daemon_not_blocks(tmp_path):
@@ -181,7 +191,7 @@ def test_usage_limit_pauses_daemon_not_blocks(tmp_path):
     fake_plane = FakePlane()
 
     dispatch = make_dispatch(
-        cfg, own, run=lambda c, r, t, w: SessionResult(ok=False, error="usage_limit"),
+        cfg, own, run=lambda c, r, t, w, **k: SessionResult(ok=False, error="usage_limit"),
         mk_worktree=_mk, rm_worktree=lambda r, w: None, plane=fake_plane)
     dispatch(Issue("i1", "a", "", "s-inprog", 7), "builder")
 
@@ -199,7 +209,7 @@ def test_qa_success_runs_main_health_and_alerts_when_red(tmp_path):
 
     dispatch = make_dispatch(
         cfg, own,
-        run=lambda c, role, tid, wt: SessionResult(ok=True),
+        run=lambda c, role, tid, wt, **k: SessionResult(ok=True),
         mk_worktree=_mk, rm_worktree=lambda r, w: None,
         verify=lambda c: (False, "1 test failed"),
         plane=fake_plane)
@@ -219,7 +229,7 @@ def test_qa_success_silent_when_main_green(tmp_path):
 
     dispatch = make_dispatch(
         cfg, own,
-        run=lambda c, role, tid, wt: SessionResult(ok=True),
+        run=lambda c, role, tid, wt, **k: SessionResult(ok=True),
         mk_worktree=_mk, rm_worktree=lambda r, w: None,
         verify=lambda c: (True, "ok"),
         plane=fake_plane)

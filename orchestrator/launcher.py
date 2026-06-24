@@ -31,12 +31,19 @@ def _role_doc_text(cfg: Config, role: str) -> str:
     return _ROLE_DOC_CACHE[role]
 
 
+def model_for_role(cfg: Config, role: str) -> str:
+    return (getattr(cfg, "role_models", None) or {}).get(role, cfg.claude_model)
+
+
 def build_claude_command(cfg: Config, role: str, ticket_id: str,
-                         role_doc_text: str) -> list[str]:
-    # Hand the session the Plane project id up front so it doesn't waste turns calling
-    # list_projects to rediscover it every time.
+                         role_doc_text: str, context: str = "") -> list[str]:
+    # Hand the session the Plane project id + the ticket context up front so it doesn't waste
+    # turns (and context budget) calling list_projects / retrieve_work_item / list_comments —
+    # Plane MCP results stay in context the whole session, so reading via MCP is the big drain.
     prompt = (f"You are the {role} for Plane work item {ticket_id} in Plane project "
               f"{cfg.plane_project_id}. Follow your role instructions.")
+    if context:
+        prompt += "\n\n" + context
     return [
         cfg.claude_binary, "-p", prompt,
         "--output-format", "stream-json", "--verbose",
@@ -45,7 +52,7 @@ def build_claude_command(cfg: Config, role: str, ticket_id: str,
         # only the Plane server — ignore the user's personal MCP servers so it connects
         # fast without contention and never blocks on an unrelated server needing auth
         "--strict-mcp-config",
-        "--model", cfg.claude_model,
+        "--model", model_for_role(cfg, role),
         "--max-turns", str(cfg.max_turns),
         "--append-system-prompt", role_doc_text,
     ]
@@ -131,9 +138,9 @@ def _pump_stream(stream, role: str, ticket_id: str, sink: list[str]) -> None:
 
 
 def run_session(cfg: Config, role: str, ticket_id: str, worktree: Path,
-                *, runner=subprocess.Popen) -> SessionResult:
+                *, runner=subprocess.Popen, context: str = "") -> SessionResult:
     role_doc_text = _role_doc_text(cfg, role)
-    cmd = build_claude_command(cfg, role, ticket_id, role_doc_text)
+    cmd = build_claude_command(cfg, role, ticket_id, role_doc_text, context)
     obs.info("claude", f"launching {role} session for {ticket_id} in {worktree.name}")
     started = time.monotonic()
     # Line-buffered text pipe so the reader thread sees each stream-json event as it lands,

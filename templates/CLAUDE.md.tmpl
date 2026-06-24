@@ -42,6 +42,14 @@ and never weaken a rule to get past the gate.
 Your specific role (builder / reviewer / QA) and its steps are provided in the session's system
 prompt. Honor the board state machine.
 
+## Plane is pre-loaded — use MCP to WRITE, not READ
+Your prompt already contains the ticket's id, title, current state, the state-name→id map, the
+acceptance criteria, and recent comments. **Do not** call `list_projects`, `list_states`,
+`retrieve_work_item`, or `list_work_item_comments` to re-fetch them — Plane MCP results stay in
+context for the whole session and are the single biggest token drain. Use Plane MCP **only to write**:
+`update_work_item` to move state, `create_work_item_comment` to comment (and relations on import).
+Read code/PRs with the normal file/`gh` tools.
+
 ## Plane MCP readiness
 The Plane MCP server is launched with this session but can take a few seconds to connect and register
 its tools. If a tool search for Plane tools comes back empty at first, the server is still connecting —

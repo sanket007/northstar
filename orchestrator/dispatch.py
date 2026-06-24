@@ -1,5 +1,6 @@
 from __future__ import annotations
 from typing import Callable
+import re
 import threading
 
 from orchestrator import obs
@@ -17,6 +18,34 @@ _CONTINUE_MARKER = "continuing after reaching the turn limit"
 def _continuations(comments) -> int:
     return sum(1 for c in comments
                if _CONTINUE_MARKER in (getattr(c, "body_html", "") or "").lower())
+
+
+def _strip_html(html) -> str:
+    return re.sub("<[^>]+>", "", html or "").strip()
+
+
+def ticket_context(cfg: Config, issue, comments) -> str:
+    """Pre-fetched ticket context for the session prompt, built from data we already hold —
+    so the session needn't read Plane via MCP (those results bloat its context all session)."""
+    id_to_name = {v: k for k, v in cfg.state_ids.items()}
+    lines = [
+        "## Ticket context (provided — do NOT re-fetch via Plane MCP; use Plane MCP only to WRITE:",
+        "## update_work_item to move state, create_work_item_comment to comment)",
+        f"- Work item id: {issue.id}",
+        f"- Title: {issue.name}",
+        f"- Current state: {id_to_name.get(issue.state_id, '?')}",
+        "- State name -> id (for update_work_item transitions):",
+    ]
+    lines += [f"    {n}: {i}" for n, i in cfg.state_ids.items()]
+    desc = _strip_html(getattr(issue, "description_html", ""))
+    if desc:
+        lines += ["- Description / acceptance criteria:", desc[:2500]]
+    recent = comments[-6:]
+    if recent:
+        lines.append("- Recent comments (oldest first):")
+        lines += ["    • " + _strip_html(getattr(c, "body_html", "")).replace("\n", " ")[:300]
+                  for c in recent]
+    return "\n".join(lines)
 
 
 def make_dispatch(cfg: Config, ownership: Ownership, *, run=run_session,
@@ -57,7 +86,7 @@ def make_dispatch(cfg: Config, ownership: Ownership, *, run=run_session,
         try:
             with wt_lock:
                 worktree = mk_worktree(cfg.repo_dir, cfg.worktrees_root, slug, cfg.base_branch)
-            result = run(cfg, role, issue.id, worktree)
+            result = run(cfg, role, issue.id, worktree, context=ticket_context(cfg, issue, comments))
             if result is None or not result.ok:
                 failure = (result.error if result is not None
                            else "session returned no result")
