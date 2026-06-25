@@ -91,8 +91,8 @@ class ProjectInputs:
     # auto-continue count after a session hits max_turns (each is a fresh, context-reset
     # session that resumes from the branch); the throughput dial, raise freely
     max_turn_retries: int = 4
-    # wall-clock kill per session
-    session_timeout_seconds: int = 1800
+    # wall-clock kill per session (generous vs max_turns; a timeout is transient and resumes)
+    session_timeout_seconds: int = 3600
     # work-type labels whose tickets skip the reviewer session (orchestrator auto-advances
     # Review -> QA). The importer tags each task with a work type; these are the low-risk ones.
     skip_review_labels: list = field(default_factory=lambda: ["docs", "chore"])
