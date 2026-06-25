@@ -130,15 +130,6 @@ def test_reviewer_is_fresh_session(tmp_path):
     assert "--session-id" not in cmd and "--resume" not in cmd  # independent, not persistent
 
 
-def test_max_budget_flag_only_when_set(tmp_path):
-    from orchestrator.launcher import build_claude_command
-    cfg = make_cfg(tmp_path)
-    assert "--max-budget-usd" not in build_claude_command(cfg, "builder", "t", "DOC")  # default off
-    cfg.max_budget_usd = 2.5
-    cmd = build_claude_command(cfg, "builder", "t", "DOC")
-    assert cmd[cmd.index("--max-budget-usd") + 1] == "2.5"
-
-
 def test_defer_mcp_tools_sets_env(tmp_path):
     from orchestrator.launcher import run_session, SessionResult
     cfg = make_cfg(tmp_path)

@@ -38,6 +38,8 @@ class SessionResult:
     output_tokens: int = 0
     num_turns: int = 0
     cost_usd: float = 0.0
+    model: str | None = None        # model the session ran on
+    duration_seconds: float = 0.0   # wall-clock for the session
 
 
 def role_doc_path(cfg: Config, role: str) -> Path:
@@ -68,9 +70,6 @@ def _common_flags(cfg: Config, model: str) -> list[str]:
         "--model", model,
         "--max-turns", str(cfg.max_turns),
     ]
-    budget = getattr(cfg, "max_budget_usd", None)
-    if budget:
-        flags += ["--max-budget-usd", str(budget)]  # hard per-session cost stop
     return flags
 
 
@@ -215,6 +214,7 @@ def run_session(cfg: Config, role: str, ticket_id: str, worktree: Path,
     role_doc_text = _role_doc_text(cfg, role)
     cmd = build_claude_command(cfg, role, ticket_id, role_doc_text, context,
                                resume=resume, instruction=instruction, session_id=session_id)
+    model = cfg.claude_model if role in PERSISTENT_ROLES else model_for_role(cfg, role)
     verb = "resuming" if resume else "launching"
     obs.info("claude", f"{verb} {role} session for {ticket_id} in {worktree.name}")
     started = time.monotonic()
@@ -240,12 +240,14 @@ def run_session(cfg: Config, role: str, ticket_id: str, worktree: Path,
         except Exception:
             pass
         pump.join(timeout=2)
-        obs.info("claude", f"{role} session for {ticket_id} timed out "
-                           f"({time.monotonic() - started:.0f}s)")
-        return SessionResult(ok=False, error="session timeout")
+        dur = time.monotonic() - started
+        obs.info("claude", f"{role} session for {ticket_id} timed out ({dur:.0f}s)")
+        return SessionResult(ok=False, error="session timeout", model=model, duration_seconds=dur)
     pump.join(timeout=5)
     result = parse_stream_json(lines)
     dur = time.monotonic() - started
+    result.model = model
+    result.duration_seconds = dur
     # token telemetry: initial context (startup load) + run totals, per session
     if result.initial_input_tokens or result.total_input_tokens:
         obs.info("claude",
@@ -261,7 +263,8 @@ def run_session(cfg: Config, role: str, ticket_id: str, worktree: Path,
                      "Claude Code auto-compacts near the model window; watch this session's growth")
     if proc.returncode not in (0, None) and result.ok:
         obs.info("claude", f"{role} session for {ticket_id} exited {proc.returncode} ({dur:.0f}s)")
-        return SessionResult(ok=False, error=f"claude exited {proc.returncode}")
+        return SessionResult(ok=False, error=f"claude exited {proc.returncode}",
+                             model=model, duration_seconds=dur, session_id=result.session_id)
     obs.info("claude", f"{role} session for {ticket_id} "
                        f"{'finished' if result.ok else 'failed'} ({dur:.0f}s)")
     return result

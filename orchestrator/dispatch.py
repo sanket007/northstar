@@ -16,8 +16,7 @@ _CONTINUE_MARKER = "continuing after reaching the turn limit"
 _RETRY_MARKER = "retrying after a recoverable session issue"
 
 # failure substrings the daemon retries (bounded) instead of blocking on — usually transient
-# (ran out of turns; recoverable internal error; hit the per-session cost cap -> resume continues)
-_TRANSIENT = ("max_turns", "error_during_execution", "budget")
+_TRANSIENT = ("max_turns", "error_during_execution")
 
 
 def _auto_retries(comments) -> int:
@@ -66,6 +65,28 @@ def _latest_feedback(comments) -> str:
         if "[reviewer]" in b.lower() or "[qa]" in b.lower():
             return _strip_html(b)
     return _strip_html(getattr(comments[-1], "body_html", "")) if comments else ""
+
+
+def _exec_report(role: str, result, resume: bool) -> str:
+    """One-line execution receipt for a stage: model, turns, time, tokens, cost."""
+    status = "ok" if result.ok else f"failed ({result.error})"
+    meta = []
+    if result.model:
+        meta.append(result.model)
+    if result.num_turns:
+        meta.append(f"{result.num_turns} turns")
+    if result.duration_seconds:
+        meta.append(f"{result.duration_seconds:.0f}s")
+    if result.initial_input_tokens:
+        meta.append(f"ctx ~{result.initial_input_tokens // 1000}k")
+    if result.total_input_tokens or result.output_tokens:
+        meta.append(f"tok {result.total_input_tokens}/{result.output_tokens}")
+    if result.cost_usd:
+        meta.append(f"${result.cost_usd:.2f}")
+    if resume:
+        meta.append("resumed")
+    head = f"**[orchestrator] {role} run** — {status}"
+    return head + ("\n\n" + " · ".join(meta) if meta else "")
 
 
 def _phase_instruction(role: str, comments) -> str:
@@ -153,6 +174,7 @@ def make_dispatch(cfg: Config, ownership: Ownership, *, run=run_session,
         instruction = _phase_instruction(role, comments) if resume else ""
         worktree = None
         failure = None
+        result = None
         cleared = False  # set when a broken resume's marker is dropped -> retry as a fresh session
         try:
             with wt_lock:
@@ -184,6 +206,12 @@ def make_dispatch(cfg: Config, ownership: Ownership, *, run=run_session,
                 try:
                     with wt_lock:
                         rm_worktree(cfg.repo_dir, worktree)
+                except Exception:
+                    pass
+            # per-stage execution receipt (model, turns, time, tokens, cost) on the ticket
+            if result is not None:
+                try:
+                    plane.add_comment(issue.id, _exec_report(role, result, resume))
                 except Exception:
                     pass
             if failure == "usage_limit":

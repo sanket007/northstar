@@ -70,9 +70,10 @@ def test_dispatch_runs_session_then_cleans_up_and_releases(tmp_path):
     assert ("run", "builder", "i1") in events
     assert ("rm", "7-agent") in events
     assert own.owns("i1") is False
-    # On success, no Blocked comment or state change
-    assert fake_plane.comments == []
+    # On success: a state change isn't forced and nothing is blocked (an exec report IS posted).
     assert fake_plane.states == []
+    assert not any("blocked" in b.lower() for _, b in fake_plane.comments)
+    assert any("builder run" in b for _, b in fake_plane.comments)  # per-stage exec report
 
 
 def test_dispatch_releases_ownership_and_blocks_on_session_error(tmp_path):
@@ -89,10 +90,10 @@ def test_dispatch_releases_ownership_and_blocks_on_session_error(tmp_path):
     dispatch(Issue("i1", "a", "", "s-ready", 7), "builder")
 
     assert own.owns("i1") is False
-    assert len(fake_plane.comments) == 1
-    issue_id, body = fake_plane.comments[0]
+    blocked = [(i, b) for i, b in fake_plane.comments if "blocked" in b.lower()]
+    assert len(blocked) == 1
+    issue_id, body = blocked[0]
     assert issue_id == "i1"
-    assert "blocked" in body.lower()
     assert "🤖" not in body and "\U0001f916" not in body  # no emojis in posted comments
     assert fake_plane.states == [("i1", "s-blocked")]
 
@@ -153,7 +154,8 @@ def test_max_turns_requeues_instead_of_blocking(tmp_path):
     dispatch(Issue("i1", "a", "", "s-inprog", 7), "builder")
 
     assert fake_plane.states == []                       # NOT blocked
-    assert "continuing after reaching the turn limit" in fake_plane.comments[0][1].lower()
+    assert any("continuing after reaching the turn limit" in b.lower()
+               for _, b in fake_plane.comments)
     assert own.owns("i1") is False                       # released -> next poll re-picks it up
 
 
@@ -205,6 +207,35 @@ def _mark(cfg, ticket_id, sid="sid-existing"):
     d = cfg.worktrees_root / ".sessions"
     d.mkdir(parents=True, exist_ok=True)
     (d / ticket_id).write_text(sid)
+
+
+def test_exec_report_formats_metrics():
+    from orchestrator.dispatch import _exec_report
+    r = SessionResult(ok=True, model="claude-sonnet-4-6", num_turns=66,
+                      duration_seconds=352.0, initial_input_tokens=28893,
+                      total_input_tokens=2334266, output_tokens=13267, cost_usd=1.201)
+    rpt = _exec_report("qa", r, resume=True)
+    assert "**[orchestrator] qa run** — ok" in rpt
+    for piece in ("claude-sonnet-4-6", "66 turns", "352s", "ctx ~28k",
+                  "2334266/13267", "$1.20", "resumed"):
+        assert piece in rpt
+    bad = _exec_report("builder", SessionResult(ok=False, error="error_during_execution: boom"), False)
+    assert "failed (error_during_execution: boom)" in bad
+
+
+def test_exec_report_posted_per_stage(tmp_path):
+    cfg = make_cfg(tmp_path)
+    own = Ownership(); own.claim("i1")
+    fake_plane = FakePlane()
+
+    def fake_run(cfg, role, ticket_id, worktree, **k):
+        return SessionResult(ok=True, model="m", num_turns=3, duration_seconds=12.0,
+                             session_id="s")
+
+    dispatch = make_dispatch(cfg, own, run=fake_run, mk_worktree=_mk,
+                             rm_worktree=lambda r, w: None, plane=fake_plane)
+    dispatch(Issue("i1", "a", "", "s-ready", 7), "builder")
+    assert any(b.startswith("**[orchestrator] builder run**") for _, b in fake_plane.comments)
 
 
 def test_builder_create_stores_assigned_session_id(tmp_path):
@@ -293,7 +324,8 @@ def test_error_during_execution_on_resume_heals_and_retries(tmp_path):
     dispatch(Issue("i1", "a", "", "s-qa", 7), "qa")
     assert not (cfg.worktrees_root / ".sessions" / "i1").exists()  # broken resume healed -> fresh next
     assert fake_plane.states == []                                 # NOT blocked
-    assert "retrying after a recoverable session issue" in fake_plane.comments[0][1].lower()
+    assert any("retrying after a recoverable session issue" in b.lower()
+               for _, b in fake_plane.comments)
     assert own.owns("i1") is False
 
 
@@ -362,8 +394,7 @@ def test_qa_success_runs_main_health_and_alerts_when_red(tmp_path):
 
     assert own.owns("i1") is False
     assert fake_plane.states == []                       # Completed already; not re-moved
-    assert len(fake_plane.comments) == 1
-    assert "main is RED" in fake_plane.comments[0][1]
+    assert any("main is RED" in b for _, b in fake_plane.comments)
 
 
 def test_qa_success_silent_when_main_green(tmp_path):
@@ -380,5 +411,5 @@ def test_qa_success_silent_when_main_green(tmp_path):
         plane=fake_plane)
     dispatch(Issue("i1", "a", "", "s-qa", 7), "qa")
 
-    assert fake_plane.comments == []
+    assert not any("main is RED" in b for _, b in fake_plane.comments)  # silent about health
     assert own.owns("i1") is False
