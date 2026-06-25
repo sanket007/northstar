@@ -95,6 +95,15 @@ def test_parse_stream_json_captures_session_id():
     assert res.ok is True and res.session_id == "abc-123"
 
 
+def test_parse_stream_json_appends_error_detail():
+    from orchestrator.launcher import parse_stream_json
+    lines = ['{"type":"result","subtype":"error_during_execution","is_error":true,'
+             '"result":"tool X failed: boom"}']
+    res = parse_stream_json(lines)
+    assert res.ok is False
+    assert "error_during_execution" in res.error and "boom" in res.error  # subtype prefix + cause
+
+
 def test_parse_stream_json_captures_token_telemetry():
     from orchestrator.launcher import parse_stream_json
     lines = [

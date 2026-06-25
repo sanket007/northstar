@@ -258,6 +258,40 @@ def test_builder_rework_resumes_persistent_session_with_feedback(tmp_path):
     assert "fix the thing" in seen["instruction"]        # latest feedback carried into the session
 
 
+def test_error_during_execution_on_resume_heals_and_retries(tmp_path):
+    cfg = make_cfg(tmp_path, max_turn_retries=2)
+    own = Ownership(); own.claim("i1")
+    _mark(cfg, "i1", "sid-old")
+    fake_plane = FakePlane()
+
+    def fake_run(cfg, role, ticket_id, worktree, **k):
+        return SessionResult(ok=False, error="error_during_execution: tool blew up", session_id="sid-old")
+
+    dispatch = make_dispatch(cfg, own, run=fake_run, mk_worktree=_mk,
+                             rm_worktree=lambda r, w: None, plane=fake_plane)
+    dispatch(Issue("i1", "a", "", "s-qa", 7), "qa")
+    assert not (cfg.worktrees_root / ".sessions" / "i1").exists()  # broken resume healed -> fresh next
+    assert fake_plane.states == []                                 # NOT blocked
+    assert "retrying after a recoverable session issue" in fake_plane.comments[0][1].lower()
+    assert own.owns("i1") is False
+
+
+def test_error_during_execution_blocks_after_retries_exhausted(tmp_path):
+    cfg = make_cfg(tmp_path, max_turn_retries=1)
+    own = Ownership(); own.claim("i1")
+    _mark(cfg, "i1", "sid")
+    fake_plane = FakePlane(comments=[
+        "**[orchestrator] retrying after a recoverable session issue** — earlier attempt"])
+
+    def fake_run(cfg, role, ticket_id, worktree, **k):
+        return SessionResult(ok=False, error="error_during_execution: boom", session_id="sid")
+
+    dispatch = make_dispatch(cfg, own, run=fake_run, mk_worktree=_mk,
+                             rm_worktree=lambda r, w: None, plane=fake_plane)
+    dispatch(Issue("i1", "a", "", "s-qa", 7), "qa")
+    assert fake_plane.states == [("i1", "s-blocked")]             # retry budget spent -> blocked
+
+
 def test_qa_resumes_same_session_with_merge_instruction(tmp_path):
     cfg = make_cfg(tmp_path)
     own = Ownership(); own.claim("i1")
