@@ -27,10 +27,11 @@ class Config:
     state_ids: dict[str, str]
     max_concurrency: int = 1
     session_timeout_seconds: int = 1800
-    # per-session turn ceiling. Keep this moderate: it bounds how much context one
-    # session accumulates. Total work scales via max_turn_retries (each continuation is
-    # a fresh process = a clean context window), not via a huge single-session budget.
-    max_turns: int = 80
+    # per-session turn ceiling. Bounds how much context one session accumulates; total
+    # work still scales via max_turn_retries (each continuation is a fresh process = a
+    # clean context window). Watch session_timeout_seconds — a 200-turn session can run
+    # long, and the wall-clock timeout will cut it off first if set too low.
+    max_turns: int = 200
     # how many times a ticket may auto-continue after a session hits max_turns before it
     # is parked in Blocked for a human. Each continuation is a fresh session that resumes
     # from the branch's pushed commits — effectively a compaction (context resets to ~0),
@@ -75,7 +76,7 @@ def load_config(path: Path) -> Config:
         state_ids=dict(data["state_ids"]),
         max_concurrency=int(data.get("max_concurrency", 1)),
         session_timeout_seconds=int(data.get("session_timeout_seconds", 1800)),
-        max_turns=int(data.get("max_turns", 80)),
+        max_turns=int(data.get("max_turns", 200)),
         max_turn_retries=int(data.get("max_turn_retries", 4)),
         role_models=dict(data.get("role_models", {})),
         base_branch=data.get("base_branch", "main"),

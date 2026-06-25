@@ -87,7 +87,7 @@ class ProjectInputs:
     max_concurrency: int = 1
     base_branch: str = "main"
     max_reworks: int = 3
-    max_turns: int = 80
+    max_turns: int = 200
     # auto-continue count after a session hits max_turns (each is a fresh, context-reset
     # session that resumes from the branch); the throughput dial, raise freely
     max_turn_retries: int = 4

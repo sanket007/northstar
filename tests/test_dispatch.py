@@ -201,6 +201,80 @@ def test_usage_limit_pauses_daemon_not_blocks(tmp_path):
     usage_limit_hit.clear()
 
 
+def _mark(cfg, ticket_id):
+    d = cfg.worktrees_root / ".sessions"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / ticket_id).touch()
+
+
+def test_builder_create_writes_session_marker(tmp_path):
+    cfg = make_cfg(tmp_path)
+    own = Ownership(); own.claim("i1")
+    seen = {}
+
+    def fake_run(cfg, role, ticket_id, worktree, **k):
+        seen.update(k)
+        return SessionResult(ok=True)
+
+    dispatch = make_dispatch(cfg, own, run=fake_run, mk_worktree=_mk,
+                             rm_worktree=lambda r, w: None, plane=FakePlane())
+    dispatch(Issue("i1", "a", "", "s-ready", 7), "builder")
+    assert seen["resume"] is False                      # first run -> create
+    assert (cfg.worktrees_root / ".sessions" / "i1").exists()  # marker so next stage resumes
+
+
+def test_builder_rework_resumes_persistent_session_with_feedback(tmp_path):
+    cfg = make_cfg(tmp_path)
+    own = Ownership(); own.claim("i1")
+    _mark(cfg, "i1")  # session already exists
+    fake_plane = FakePlane(comments=["**[reviewer] Review → In Progress** — fix the thing"])
+    seen = {}
+
+    def fake_run(cfg, role, ticket_id, worktree, **k):
+        seen.update(k)
+        return SessionResult(ok=True)
+
+    dispatch = make_dispatch(cfg, own, run=fake_run, mk_worktree=_mk,
+                             rm_worktree=lambda r, w: None, plane=fake_plane)
+    dispatch(Issue("i1", "a", "", "s-inprog", 7), "builder")
+    assert seen["resume"] is True
+    assert seen["context"] == ""                         # not re-injected on resume
+    assert "fix the thing" in seen["instruction"]        # latest feedback carried into the session
+
+
+def test_qa_resumes_same_session_with_merge_instruction(tmp_path):
+    cfg = make_cfg(tmp_path)
+    own = Ownership(); own.claim("i1")
+    _mark(cfg, "i1")
+    seen = {}
+
+    def fake_run(cfg, role, ticket_id, worktree, **k):
+        seen.update(k)
+        return SessionResult(ok=True)
+
+    dispatch = make_dispatch(cfg, own, run=fake_run, mk_worktree=_mk,
+                             rm_worktree=lambda r, w: None, verify=lambda c: (True, "ok"),
+                             plane=FakePlane())
+    dispatch(Issue("i1", "a", "", "s-qa", 7), "qa")
+    assert seen["resume"] is True and "merge" in seen["instruction"].lower()
+
+
+def test_reviewer_is_fresh_even_when_session_exists(tmp_path):
+    cfg = make_cfg(tmp_path)
+    own = Ownership(); own.claim("i1")
+    _mark(cfg, "i1")  # a builder session exists, but reviewer must NOT resume it
+    seen = {}
+
+    def fake_run(cfg, role, ticket_id, worktree, **k):
+        seen.update(k)
+        return SessionResult(ok=True)
+
+    dispatch = make_dispatch(cfg, own, run=fake_run, mk_worktree=_mk,
+                             rm_worktree=lambda r, w: None, plane=FakePlane())
+    dispatch(Issue("i1", "a", "", "s-review", 7), "reviewer")
+    assert seen["resume"] is False and seen["context"] != ""  # independent + gets its own context
+
+
 def test_qa_success_runs_main_health_and_alerts_when_red(tmp_path):
     cfg = make_cfg(tmp_path)
     own = Ownership()

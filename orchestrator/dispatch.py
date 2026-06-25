@@ -8,7 +8,7 @@ from orchestrator.config import Config
 from orchestrator.plane import Issue, PlaneClient
 from orchestrator.poller import Ownership, rework_count, usage_limit_hit
 from orchestrator.worktree import create_worktree, remove_worktree
-from orchestrator.launcher import run_session
+from orchestrator.launcher import run_session, PERSISTENT_ROLES
 from orchestrator.health import verify_main
 
 # marker for orchestrator-posted continuation notes after a session hit max_turns
@@ -22,6 +22,47 @@ def _continuations(comments) -> int:
 
 def _strip_html(html) -> str:
     return re.sub("<[^>]+>", "", html or "").strip()
+
+
+# --- persistent per-ticket session markers (so later stages resume, not recreate) ---
+def _session_marker(cfg: Config, ticket_id: str):
+    return cfg.worktrees_root / ".sessions" / ticket_id
+
+
+def _session_exists(cfg: Config, ticket_id: str) -> bool:
+    return _session_marker(cfg, ticket_id).exists()
+
+
+def _mark_session(cfg: Config, ticket_id: str) -> None:
+    try:
+        m = _session_marker(cfg, ticket_id)
+        m.parent.mkdir(parents=True, exist_ok=True)
+        m.touch()
+    except Exception:
+        pass
+
+
+def _latest_feedback(comments) -> str:
+    """The most recent reviewer/QA comment (the bounce we must address), else the last comment."""
+    for c in reversed(comments):
+        b = getattr(c, "body_html", "") or ""
+        if "[reviewer]" in b.lower() or "[qa]" in b.lower():
+            return _strip_html(b)
+    return _strip_html(getattr(comments[-1], "body_html", "")) if comments else ""
+
+
+def _phase_instruction(role: str, comments) -> str:
+    """Short next-phase message for a resumed (context-retained) session — no re-hydration."""
+    if role == "qa":
+        return ("QA phase. Your PR passed INDEPENDENT review. Verify each acceptance criterion from "
+                "the outside (real behavior, not just unit tests), confirm the branch is current with "
+                "origin and CI is green, then SAFELY merge the PR and move the ticket to Completed. If "
+                "any criterion fails, move it back to In Progress with specifics instead of merging. "
+                "Use Plane MCP only to write (move state, comment).")
+    return ("Rework. Address the latest review feedback below: fix the code, rebase onto trunk and "
+            "resolve ALL conflicts so the PR is mergeable, get every check green, push, then move the "
+            "ticket back to Review. Never hand a conflicting PR onward. Latest feedback:\n\n"
+            + _latest_feedback(comments))
 
 
 def ticket_context(cfg: Config, issue, comments) -> str:
@@ -84,12 +125,23 @@ def make_dispatch(cfg: Config, ownership: Ownership, *, run=run_session,
             return
 
         slug = f"{issue.sequence_id}-{role}"
+        # Builder + QA share one persistent session per ticket (context retained across stages);
+        # resume it once it exists. Reviewer is always a fresh, independent session.
+        persistent = role in PERSISTENT_ROLES
+        resume = persistent and _session_exists(cfg, issue.id)
+        instruction = _phase_instruction(role, comments) if resume else ""
         worktree = None
         failure = None
         try:
             with wt_lock:
                 worktree = mk_worktree(cfg.repo_dir, cfg.worktrees_root, slug, cfg.base_branch)
-            result = run(cfg, role, issue.id, worktree, context=ticket_context(cfg, issue, comments))
+            # On resume the context already lives in the session — don't re-inject it (that's the
+            # whole point); a fresh session (create / reviewer) gets the pre-fetched ticket context.
+            ctx = "" if resume else ticket_context(cfg, issue, comments)
+            result = run(cfg, role, issue.id, worktree, context=ctx,
+                         resume=resume, instruction=instruction)
+            if persistent and not resume:
+                _mark_session(cfg, issue.id)  # created now -> later stages resume this conversation
             if result is None or not result.ok:
                 failure = (result.error if result is not None
                            else "session returned no result")

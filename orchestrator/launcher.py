@@ -7,9 +7,32 @@ import os
 import subprocess
 import threading
 import time
+import uuid
 
 from orchestrator.config import Config
 from orchestrator import obs
+
+# Roles that share ONE long-lived Claude session per ticket (context retained across stages,
+# so no re-hydration tax). The reviewer is deliberately NOT here — it stays a fresh, independent
+# session so its review is adversarial, not the builder grading its own work.
+PERSISTENT_ROLES = {"builder", "qa"}
+
+# Fixed namespace -> deterministic per-ticket session id (same id every dispatch for a ticket).
+_SESSION_NS = uuid.UUID("b1f0e7a2-5c3d-4e6f-9a8b-0c1d2e3f4a5b")
+
+# Appended to every session's system prompt: terse output to cut token spend, but never at the
+# cost of correctness, and code/commits/PRs/security explanations stay normal.
+CAVEMAN_ULTRA = (
+    "OUTPUT STYLE (caveman ultra): in prose, Plane comments, and your reasoning be maximally "
+    "terse — drop articles, filler, pleasantries, and hedging; fragments are fine; pick the "
+    "shortest words. EXEMPT, write normally with full correctness: code, commit messages, PR "
+    "titles/bodies, and any security-relevant explanation. Never trade technical accuracy or a "
+    "required step for brevity."
+)
+
+
+def ticket_session_id(ticket_id: str) -> str:
+    return str(uuid.uuid5(_SESSION_NS, ticket_id))
 
 
 @dataclass
@@ -35,27 +58,43 @@ def model_for_role(cfg: Config, role: str) -> str:
     return (getattr(cfg, "role_models", None) or {}).get(role, cfg.claude_model)
 
 
-def build_claude_command(cfg: Config, role: str, ticket_id: str,
-                         role_doc_text: str, context: str = "") -> list[str]:
-    # Hand the session the Plane project id + the ticket context up front so it doesn't waste
-    # turns (and context budget) calling list_projects / retrieve_work_item / list_comments —
-    # Plane MCP results stay in context the whole session, so reading via MCP is the big drain.
-    prompt = (f"You are the {role} for Plane work item {ticket_id} in Plane project "
-              f"{cfg.plane_project_id}. Follow your role instructions.")
-    if context:
-        prompt += "\n\n" + context
+def _common_flags(cfg: Config, model: str) -> list[str]:
     return [
-        cfg.claude_binary, "-p", prompt,
         "--output-format", "stream-json", "--verbose",
         "--dangerously-skip-permissions",
         "--mcp-config", str(cfg.mcp_config_path),
         # only the Plane server — ignore the user's personal MCP servers so it connects
         # fast without contention and never blocks on an unrelated server needing auth
         "--strict-mcp-config",
-        "--model", model_for_role(cfg, role),
+        "--model", model,
         "--max-turns", str(cfg.max_turns),
-        "--append-system-prompt", role_doc_text,
     ]
+
+
+def build_claude_command(cfg: Config, role: str, ticket_id: str, role_doc_text: str,
+                         context: str = "", *, resume: bool = False,
+                         instruction: str = "") -> list[str]:
+    persistent = role in PERSISTENT_ROLES
+    if persistent and resume:
+        # The ticket context AND role instructions already live in the retained session — send
+        # ONLY the next-phase instruction (plus the latest comment when a rework needs it). No
+        # system prompt: --resume keeps the one set at creation. This is the re-hydration saving.
+        model = cfg.claude_model  # persistent session was created with this model; keep it
+        return [cfg.claude_binary, "-p", instruction or "Continue the next phase for this ticket.",
+                *_common_flags(cfg, model), "--resume", ticket_session_id(ticket_id)]
+    # Fresh start: persistent role's first run, or a non-persistent role (reviewer). Hand over the
+    # project id + pre-fetched ticket context so it doesn't re-read Plane via MCP (the big drain).
+    prompt = (f"You are the {role} for Plane work item {ticket_id} in Plane project "
+              f"{cfg.plane_project_id}. Follow your role instructions.")
+    if context:
+        prompt += "\n\n" + context
+    model = cfg.claude_model if persistent else model_for_role(cfg, role)
+    cmd = [cfg.claude_binary, "-p", prompt, *_common_flags(cfg, model),
+           "--append-system-prompt", role_doc_text + "\n\n" + CAVEMAN_ULTRA]
+    if persistent:
+        # pin a stable id so later stages (rework, QA) resume THIS conversation
+        cmd += ["--session-id", ticket_session_id(ticket_id)]
+    return cmd
 
 
 _LIMIT_PHRASES = ("session limit", "usage limit", "hit your limit", "limit reached")
@@ -138,10 +177,13 @@ def _pump_stream(stream, role: str, ticket_id: str, sink: list[str]) -> None:
 
 
 def run_session(cfg: Config, role: str, ticket_id: str, worktree: Path,
-                *, runner=subprocess.Popen, context: str = "") -> SessionResult:
+                *, runner=subprocess.Popen, context: str = "",
+                resume: bool = False, instruction: str = "") -> SessionResult:
     role_doc_text = _role_doc_text(cfg, role)
-    cmd = build_claude_command(cfg, role, ticket_id, role_doc_text, context)
-    obs.info("claude", f"launching {role} session for {ticket_id} in {worktree.name}")
+    cmd = build_claude_command(cfg, role, ticket_id, role_doc_text, context,
+                               resume=resume, instruction=instruction)
+    verb = "resuming" if resume else "launching"
+    obs.info("claude", f"{verb} {role} session for {ticket_id} in {worktree.name}")
     started = time.monotonic()
     # Line-buffered text pipe so the reader thread sees each stream-json event as it lands,
     # giving real-time visibility into what the session is doing (in `northstar logs`).
