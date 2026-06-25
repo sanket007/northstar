@@ -96,6 +96,12 @@ class ProjectInputs:
     # work-type labels whose tickets skip the reviewer session (orchestrator auto-advances
     # Review -> QA). The importer tags each task with a work type; these are the low-risk ones.
     skip_review_labels: list = field(default_factory=lambda: ["docs", "chore"])
+    # hard per-session cost cap (USD); None = no cap
+    max_budget_usd: float | None = None
+    # log a WARN when a session's context crosses this (soft; no kill)
+    context_warn_tokens: int = 150000
+    # defer MCP tool schemas (ENABLE_TOOL_SEARCH=auto) to shrink initial context
+    defer_mcp_tools: bool = True
     # Optional self-contained trunk-health command run after each merge (must install deps
     # itself). Off by default — QA already verifies on the integrated branch before merging.
     verify_cmd: str | None = None
@@ -152,6 +158,9 @@ def write_project_config(inp: "ProjectInputs", state_ids: dict, mcp_path: Path,
         "max_turn_retries": inp.max_turn_retries,
         "session_timeout_seconds": inp.session_timeout_seconds,
         "skip_review_labels": list(inp.skip_review_labels),
+        "max_budget_usd": inp.max_budget_usd,
+        "context_warn_tokens": inp.context_warn_tokens,
+        "defer_mcp_tools": inp.defer_mcp_tools,
         "base_branch": inp.base_branch,
         # Off by default: the bare lint/build/test gate is not self-contained (no dep install
         # in a fresh worktree) and false-fails. QA verifies on the integrated branch pre-merge.

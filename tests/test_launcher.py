@@ -130,6 +130,40 @@ def test_reviewer_is_fresh_session(tmp_path):
     assert "--session-id" not in cmd and "--resume" not in cmd  # independent, not persistent
 
 
+def test_max_budget_flag_only_when_set(tmp_path):
+    from orchestrator.launcher import build_claude_command
+    cfg = make_cfg(tmp_path)
+    assert "--max-budget-usd" not in build_claude_command(cfg, "builder", "t", "DOC")  # default off
+    cfg.max_budget_usd = 2.5
+    cmd = build_claude_command(cfg, "builder", "t", "DOC")
+    assert cmd[cmd.index("--max-budget-usd") + 1] == "2.5"
+
+
+def test_defer_mcp_tools_sets_env(tmp_path):
+    from orchestrator.launcher import run_session, SessionResult
+    cfg = make_cfg(tmp_path)
+    (cfg.templates_dir).mkdir(parents=True, exist_ok=True)
+    (cfg.templates_dir / "builder.md").write_text("stub")
+    seen = {}
+
+    class FakeProc:
+        returncode = 0
+        stdout = None
+
+        def wait(self, timeout=None):
+            return 0
+
+        def kill(self):
+            pass
+
+    def fake_runner(cmd, **kw):
+        seen["env"] = kw.get("env")
+        return FakeProc()
+
+    run_session(cfg, "builder", "i1", tmp_path / "wt", runner=fake_runner)
+    assert seen["env"].get("ENABLE_TOOL_SEARCH") == "auto"  # deferred MCP schemas -> smaller context
+
+
 def test_parse_stream_json_success():
     lines = [
         '{"type":"system","subtype":"init"}',

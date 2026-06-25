@@ -53,6 +53,17 @@ class Config:
     # orchestrator auto-advances Review -> QA without launching a reviewer. For low-risk
     # work (docs, chores). QA is never skipped — it owns merge + trunk verify.
     skip_review_labels: list[str] = field(default_factory=list)
+    # Hard per-session cost cap (USD) via claude --max-budget-usd; None = no cap. The session
+    # halts when spend hits this; the orchestrator treats it as transient and resumes (bounded).
+    max_budget_usd: float | None = None
+    # Soft warning threshold: when a session's context (initial or cumulative input) crosses this,
+    # the daemon logs a WARN. It does NOT kill the session (Claude Code auto-compacts near the
+    # model window on its own). There is no CLI knob to hard-cap context at a token count.
+    context_warn_tokens: int = 150000
+    # Defer MCP tool schemas until ~10% of context fills (ENABLE_TOOL_SEARCH=auto), loading them
+    # on demand — shrinks the initial context. Safe because the orchestrator pre-injects ticket
+    # context, so sessions rarely need Plane read tools.
+    defer_mcp_tools: bool = True
 
 
 def load_config(path: Path) -> Config:
@@ -84,4 +95,8 @@ def load_config(path: Path) -> Config:
         max_reworks=int(data.get("max_reworks", 3)),
         usage_limit_cooldown_seconds=int(data.get("usage_limit_cooldown_seconds", 900)),
         skip_review_labels=list(data.get("skip_review_labels", [])),
+        max_budget_usd=(float(data["max_budget_usd"])
+                        if data.get("max_budget_usd") is not None else None),
+        context_warn_tokens=int(data.get("context_warn_tokens", 150000)),
+        defer_mcp_tools=bool(data.get("defer_mcp_tools", True)),
     )
