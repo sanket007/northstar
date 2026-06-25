@@ -51,33 +51,48 @@ def test_persistent_roles_exclude_reviewer():
     assert "reviewer" not in PERSISTENT_ROLES  # review stays independent
 
 
-def test_ticket_session_id_is_deterministic():
-    from orchestrator.launcher import ticket_session_id
-    assert ticket_session_id("tkt1") == ticket_session_id("tkt1")
-    assert ticket_session_id("tkt1") != ticket_session_id("tkt2")
-
-
-def test_persistent_create_pins_session_id_and_injects_caveman(tmp_path):
-    from orchestrator.launcher import build_claude_command, ticket_session_id
+def test_create_never_forces_session_id(tmp_path):
+    # Regression: forcing --session-id made a re-dispatch collide ("already exists") and false-block.
+    # claude must assign its own id; we capture it from the init event and resume that later.
+    from orchestrator.launcher import build_claude_command
     cfg = make_cfg(tmp_path)
     cmd = build_claude_command(cfg, "builder", "tkt1", "ROLE DOC", "CTX-BLOCK")
-    assert cmd[cmd.index("--session-id") + 1] == ticket_session_id("tkt1")
+    assert "--session-id" not in cmd and "--resume" not in cmd
     sysp = cmd[cmd.index("--append-system-prompt") + 1]
     assert "ROLE DOC" in sysp and "caveman ultra" in sysp.lower()
     assert "CTX-BLOCK" in cmd[cmd.index("-p") + 1]
-    assert "--resume" not in cmd
 
 
-def test_persistent_resume_sends_instruction_only(tmp_path):
-    from orchestrator.launcher import build_claude_command, ticket_session_id
+def test_persistent_resume_uses_captured_id_and_instruction_only(tmp_path):
+    from orchestrator.launcher import build_claude_command
     cfg = make_cfg(tmp_path)
     cmd = build_claude_command(cfg, "qa", "tkt1", "ROLE DOC", "CTX-BLOCK",
-                               resume=True, instruction="DO QA NOW")
-    assert cmd[cmd.index("--resume") + 1] == ticket_session_id("tkt1")
+                               resume=True, instruction="DO QA NOW", session_id="sid-xyz")
+    assert cmd[cmd.index("--resume") + 1] == "sid-xyz"
     assert cmd[cmd.index("-p") + 1] == "DO QA NOW"
     assert "--append-system-prompt" not in cmd      # retained from creation
     assert "--session-id" not in cmd
     assert "CTX-BLOCK" not in " ".join(cmd)          # context not re-injected on resume
+
+
+def test_resume_without_captured_id_falls_back_to_create(tmp_path):
+    # If we somehow have no stored id, never emit a bare --resume; build a fresh create instead.
+    from orchestrator.launcher import build_claude_command
+    cfg = make_cfg(tmp_path)
+    cmd = build_claude_command(cfg, "builder", "tkt1", "ROLE DOC", "CTX",
+                               resume=True, instruction="x", session_id="")
+    assert "--resume" not in cmd
+    assert "--append-system-prompt" in cmd          # fell back to a full create
+
+
+def test_parse_stream_json_captures_session_id():
+    from orchestrator.launcher import parse_stream_json
+    lines = [
+        '{"type":"system","subtype":"init","session_id":"abc-123"}',
+        '{"type":"result","subtype":"success","is_error":false}',
+    ]
+    res = parse_stream_json(lines)
+    assert res.ok is True and res.session_id == "abc-123"
 
 
 def test_reviewer_is_fresh_session(tmp_path):

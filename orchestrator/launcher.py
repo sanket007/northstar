@@ -7,7 +7,6 @@ import os
 import subprocess
 import threading
 import time
-import uuid
 
 from orchestrator.config import Config
 from orchestrator import obs
@@ -16,9 +15,6 @@ from orchestrator import obs
 # so no re-hydration tax). The reviewer is deliberately NOT here — it stays a fresh, independent
 # session so its review is adversarial, not the builder grading its own work.
 PERSISTENT_ROLES = {"builder", "qa"}
-
-# Fixed namespace -> deterministic per-ticket session id (same id every dispatch for a ticket).
-_SESSION_NS = uuid.UUID("b1f0e7a2-5c3d-4e6f-9a8b-0c1d2e3f4a5b")
 
 # Appended to every session's system prompt: terse output to cut token spend, but never at the
 # cost of correctness, and code/commits/PRs/security explanations stay normal.
@@ -31,14 +27,11 @@ CAVEMAN_ULTRA = (
 )
 
 
-def ticket_session_id(ticket_id: str) -> str:
-    return str(uuid.uuid5(_SESSION_NS, ticket_id))
-
-
 @dataclass
 class SessionResult:
     ok: bool
     error: str | None = None
+    session_id: str | None = None  # the id claude assigned (captured from the init event)
 
 
 def role_doc_path(cfg: Config, role: str) -> Path:
@@ -73,15 +66,17 @@ def _common_flags(cfg: Config, model: str) -> list[str]:
 
 def build_claude_command(cfg: Config, role: str, ticket_id: str, role_doc_text: str,
                          context: str = "", *, resume: bool = False,
-                         instruction: str = "") -> list[str]:
+                         instruction: str = "", session_id: str = "") -> list[str]:
     persistent = role in PERSISTENT_ROLES
-    if persistent and resume:
+    if persistent and resume and session_id:
         # The ticket context AND role instructions already live in the retained session — send
         # ONLY the next-phase instruction (plus the latest comment when a rework needs it). No
         # system prompt: --resume keeps the one set at creation. This is the re-hydration saving.
+        # We resume the id claude ASSIGNED at creation (captured then) — we never force an id, so
+        # a re-dispatch can never collide with an existing session.
         model = cfg.claude_model  # persistent session was created with this model; keep it
         return [cfg.claude_binary, "-p", instruction or "Continue the next phase for this ticket.",
-                *_common_flags(cfg, model), "--resume", ticket_session_id(ticket_id)]
+                *_common_flags(cfg, model), "--resume", session_id]
     # Fresh start: persistent role's first run, or a non-persistent role (reviewer). Hand over the
     # project id + pre-fetched ticket context so it doesn't re-read Plane via MCP (the big drain).
     prompt = (f"You are the {role} for Plane work item {ticket_id} in Plane project "
@@ -89,12 +84,11 @@ def build_claude_command(cfg: Config, role: str, ticket_id: str, role_doc_text: 
     if context:
         prompt += "\n\n" + context
     model = cfg.claude_model if persistent else model_for_role(cfg, role)
-    cmd = [cfg.claude_binary, "-p", prompt, *_common_flags(cfg, model),
-           "--append-system-prompt", role_doc_text + "\n\n" + CAVEMAN_ULTRA]
-    if persistent:
-        # pin a stable id so later stages (rework, QA) resume THIS conversation
-        cmd += ["--session-id", ticket_session_id(ticket_id)]
-    return cmd
+    # NOTE: never force --session-id. claude assigns one; we capture it from the init event and
+    # resume THAT later. Forcing a precomputed id makes any re-dispatch collide ("session already
+    # exists") and exit instantly with no result -> false block.
+    return [cfg.claude_binary, "-p", prompt, *_common_flags(cfg, model),
+            "--append-system-prompt", role_doc_text + "\n\n" + CAVEMAN_ULTRA]
 
 
 _LIMIT_PHRASES = ("session limit", "usage limit", "hit your limit", "limit reached")
@@ -108,6 +102,7 @@ def _is_usage_limit(text: str) -> bool:
 def parse_stream_json(lines: Iterable[str]) -> SessionResult:
     saw_result = False
     limit_hit = False
+    sid: str | None = None
     for line in lines:
         line = line.strip()
         if not line:
@@ -116,6 +111,9 @@ def parse_stream_json(lines: Iterable[str]) -> SessionResult:
             obj = json.loads(line)
         except json.JSONDecodeError:
             continue
+        # claude assigns the session id and reports it on the init event (and on result);
+        # capture it so the orchestrator can --resume this exact conversation later.
+        sid = obj.get("session_id") or sid
         if obj.get("type") == "assistant":
             for b in obj.get("message", {}).get("content", []):
                 if b.get("type") == "text" and _is_usage_limit(b.get("text", "")):
@@ -125,15 +123,15 @@ def parse_stream_json(lines: Iterable[str]) -> SessionResult:
             # Claude prints the usage-limit notice then exits result=success having done nothing —
             # surface it as its own error so the daemon pauses instead of looping into the wall.
             if limit_hit:
-                return SessionResult(ok=False, error="usage_limit")
+                return SessionResult(ok=False, error="usage_limit", session_id=sid)
             if obj.get("is_error"):
-                return SessionResult(ok=False, error=obj.get("subtype", "error"))
-            return SessionResult(ok=True, error=None)
+                return SessionResult(ok=False, error=obj.get("subtype", "error"), session_id=sid)
+            return SessionResult(ok=True, error=None, session_id=sid)
     if limit_hit:
-        return SessionResult(ok=False, error="usage_limit")
+        return SessionResult(ok=False, error="usage_limit", session_id=sid)
     if not saw_result:
-        return SessionResult(ok=False, error="session ended with no result event")
-    return SessionResult(ok=False, error="unknown")
+        return SessionResult(ok=False, error="session ended with no result event", session_id=sid)
+    return SessionResult(ok=False, error="unknown", session_id=sid)
 
 
 def claude_event_line(raw: str) -> str | None:
@@ -178,10 +176,10 @@ def _pump_stream(stream, role: str, ticket_id: str, sink: list[str]) -> None:
 
 def run_session(cfg: Config, role: str, ticket_id: str, worktree: Path,
                 *, runner=subprocess.Popen, context: str = "",
-                resume: bool = False, instruction: str = "") -> SessionResult:
+                resume: bool = False, instruction: str = "", session_id: str = "") -> SessionResult:
     role_doc_text = _role_doc_text(cfg, role)
     cmd = build_claude_command(cfg, role, ticket_id, role_doc_text, context,
-                               resume=resume, instruction=instruction)
+                               resume=resume, instruction=instruction, session_id=session_id)
     verb = "resuming" if resume else "launching"
     obs.info("claude", f"{verb} {role} session for {ticket_id} in {worktree.name}")
     started = time.monotonic()
