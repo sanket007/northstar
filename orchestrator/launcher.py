@@ -58,7 +58,7 @@ def model_for_role(cfg: Config, role: str) -> str:
 
 
 def _common_flags(cfg: Config, model: str) -> list[str]:
-    return [
+    flags = [
         "--output-format", "stream-json", "--verbose",
         "--dangerously-skip-permissions",
         "--mcp-config", str(cfg.mcp_config_path),
@@ -68,6 +68,10 @@ def _common_flags(cfg: Config, model: str) -> list[str]:
         "--model", model,
         "--max-turns", str(cfg.max_turns),
     ]
+    budget = getattr(cfg, "max_budget_usd", None)
+    if budget:
+        flags += ["--max-budget-usd", str(budget)]  # hard per-session cost stop
+    return flags
 
 
 def build_claude_command(cfg: Config, role: str, ticket_id: str, role_doc_text: str,
@@ -217,6 +221,9 @@ def run_session(cfg: Config, role: str, ticket_id: str, worktree: Path,
     # Line-buffered text pipe so the reader thread sees each stream-json event as it lands,
     # giving real-time visibility into what the session is doing (in `northstar logs`).
     env = {**os.environ, "MCP_TIMEOUT": "30000", "MCP_TOOL_TIMEOUT": "60000"}
+    if getattr(cfg, "defer_mcp_tools", True):
+        # load MCP tool schemas on demand instead of all up front -> smaller initial context
+        env["ENABLE_TOOL_SEARCH"] = "auto"
     proc = runner(cmd, cwd=str(worktree), stdout=subprocess.PIPE,
                   stderr=subprocess.STDOUT, text=True, bufsize=1, env=env)
     lines: list[str] = []
@@ -246,6 +253,12 @@ def run_session(cfg: Config, role: str, ticket_id: str, worktree: Path,
                  f"({result.initial_input_tokens}) | run in {result.total_input_tokens} "
                  f"out {result.output_tokens} | turns {result.num_turns} | ${result.cost_usd:.3f}"
                  f"{' | RESUMED' if resume else ''}")
+        warn = getattr(cfg, "context_warn_tokens", 0)
+        peak = max(result.initial_input_tokens, result.total_input_tokens)
+        if warn and peak > warn:
+            obs.info("claude",
+                     f"WARN {role}/{ticket_id[:8]} context {peak} > {warn} threshold — "
+                     "Claude Code auto-compacts near the model window; watch this session's growth")
     if proc.returncode not in (0, None) and result.ok:
         obs.info("claude", f"{role} session for {ticket_id} exited {proc.returncode} ({dur:.0f}s)")
         return SessionResult(ok=False, error=f"claude exited {proc.returncode}")

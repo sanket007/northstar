@@ -38,6 +38,9 @@ def test_load_config_parses_all_fields(tmp_path):
     assert cfg.max_turn_retries == 4
     assert cfg.usage_limit_cooldown_seconds == 900
     assert cfg.skip_review_labels == []
+    assert cfg.max_budget_usd is None
+    assert cfg.context_warn_tokens == 150000
+    assert cfg.defer_mcp_tools is True
 
 
 def test_load_config_optional_turn_time_cap(tmp_path):
