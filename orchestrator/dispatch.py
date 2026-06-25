@@ -30,6 +30,24 @@ def _strip_html(html) -> str:
     return re.sub("<[^>]+>", "", html or "").strip()
 
 
+def _slugify(text: str, limit: int = 40) -> str:
+    """git-branch-safe slug from a ticket title: lowercase, hyphen-separated words."""
+    s = re.sub(r"[^a-z0-9]+", "-", (text or "").lower()).strip("-")
+    if len(s) > limit:                 # trim at a word boundary so it reads cleanly
+        s = s[:limit].rsplit("-", 1)[0] or s[:limit]
+    return s.strip("-")
+
+
+def _branch_slug(issue, role: str, persistent: bool) -> str:
+    """Relevant, STABLE per-ticket slug: <seq>-<title> (+ -review for the reviewer worktree).
+    Stable because it derives only from the fixed sequence id + title, so a resumed session
+    finds the same worktree/branch every dispatch."""
+    title = _slugify(getattr(issue, "name", ""))
+    base = f"{issue.sequence_id}-{title}" if title else str(issue.sequence_id)
+    # reviewer gets its own short-lived worktree; persistent (builder+QA) share one path
+    return base if persistent else f"{base}-review"
+
+
 # --- persistent per-ticket session store: file holds the claude-assigned session id so later
 # stages --resume that exact conversation. We never force an id (forcing collides on re-dispatch). ---
 def _session_marker(cfg: Config, ticket_id: str):
@@ -169,7 +187,9 @@ def make_dispatch(cfg: Config, ownership: Ownership, *, run=run_session,
         # Persistent roles share ONE worktree PATH per ticket so a resumed session runs in the
         # SAME working directory it was created in — resuming in a different cwd triggers
         # error_during_execution. Reviewer gets its own (it's independent and short-lived).
-        slug = f"{issue.sequence_id}-agent" if persistent else f"{issue.sequence_id}-{role}"
+        # Slug carries the ticket title so the branch/PR name is meaningful (e.g.
+        # agent/9-auth-register-login), and is stable per ticket so resume finds the same path.
+        slug = _branch_slug(issue, role, persistent)
         stored_sid = _read_session_id(cfg, issue.id) if persistent else ""
         resume = bool(stored_sid)
         instruction = _phase_instruction(role, comments) if resume else ""

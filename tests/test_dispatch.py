@@ -66,9 +66,9 @@ def test_dispatch_runs_session_then_cleans_up_and_releases(tmp_path):
                              plane=fake_plane)
     dispatch(Issue("i1", "a", "", "s-ready", 7), "builder")
 
-    assert ("mk", "7-agent", "main") in events  # persistent role -> shared per-ticket worktree path
+    assert ("mk", "7-a", "main") in events  # persistent -> shared per-ticket path, title in slug
     assert ("run", "builder", "i1") in events
-    assert ("rm", "7-agent") in events
+    assert ("rm", "7-a") in events
     assert own.owns("i1") is False
     # On success: a state change isn't forced and nothing is blocked (an exec report IS posted).
     assert fake_plane.states == []
@@ -289,13 +289,30 @@ def test_builder_rework_resumes_persistent_session_with_feedback(tmp_path):
     assert "fix the thing" in seen["instruction"]        # latest feedback carried into the session
 
 
+def test_branch_slug_is_relevant_and_stable():
+    from orchestrator.dispatch import _branch_slug, _slugify
+    assert _slugify("P1-T09 — Web: project detail") == "p1-t09-web-project-detail"
+    assert _slugify("") == ""
+    # over-limit titles trim at a word boundary
+    assert _slugify("a b c d e f g h i j k l m n o p", limit=10) in ("a-b-c-d-e", "a-b-c-d-e-f")
+    iss = Issue("u", "P1-T01 — Auth: register + login (bcrypt, JWT)", "", "s", 12)
+    b = _branch_slug(iss, "builder", True)
+    q = _branch_slug(iss, "qa", True)
+    r = _branch_slug(iss, "reviewer", False)
+    assert b == q                          # builder + QA share one stable per-ticket slug
+    assert b.startswith("12-") and "auth" in b
+    assert r == b + "-review"              # reviewer worktree is distinct
+    # empty title -> falls back to the sequence id, never blank
+    assert _branch_slug(Issue("u", "", "", "s", 5), "builder", True) == "5"
+
+
 def test_persistent_roles_share_one_worktree_path(tmp_path):
     # builder + QA of the same ticket must use the SAME worktree path so a resume runs in the
     # cwd the session was created in; reviewer gets its own.
     cfg = make_cfg(tmp_path)
     own = Ownership()
 
-    for role, expect in (("builder", "9-agent"), ("qa", "9-agent"), ("reviewer", "9-reviewer")):
+    for role, expect in (("builder", "9-a"), ("qa", "9-a"), ("reviewer", "9-a-review")):
         own.claim("i9")
         seen = {}
 
