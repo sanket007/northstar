@@ -26,7 +26,9 @@ class Config:
     templates_dir: Path
     state_ids: dict[str, str]
     max_concurrency: int = 1
-    session_timeout_seconds: int = 1800
+    # wall-clock kill per session. Must be generous relative to max_turns (a 200-turn session
+    # runs long); a timeout is treated as transient and the session resumes from where it was.
+    session_timeout_seconds: int = 3600
     # per-session turn ceiling. Bounds how much context one session accumulates; total
     # work still scales via max_turn_retries (each continuation is a fresh process = a
     # clean context window). Watch session_timeout_seconds — a 200-turn session can run
@@ -83,7 +85,7 @@ def load_config(path: Path) -> Config:
         templates_dir=Path(data["templates_dir"]),
         state_ids=dict(data["state_ids"]),
         max_concurrency=int(data.get("max_concurrency", 1)),
-        session_timeout_seconds=int(data.get("session_timeout_seconds", 1800)),
+        session_timeout_seconds=int(data.get("session_timeout_seconds", 3600)),
         max_turns=int(data.get("max_turns", 200)),
         max_turn_retries=int(data.get("max_turn_retries", 4)),
         role_models=dict(data.get("role_models", {})),

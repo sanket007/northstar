@@ -16,7 +16,8 @@ _CONTINUE_MARKER = "continuing after reaching the turn limit"
 _RETRY_MARKER = "retrying after a recoverable session issue"
 
 # failure substrings the daemon retries (bounded) instead of blocking on — usually transient
-_TRANSIENT = ("max_turns", "error_during_execution")
+# (ran out of turns; recoverable internal error; wall-clock timeout mid-work -> resume continues)
+_TRANSIENT = ("max_turns", "error_during_execution", "timeout")
 
 
 def _auto_retries(comments) -> int:

@@ -33,7 +33,7 @@ def test_load_config_parses_all_fields(tmp_path):
     assert cfg.worktrees_root == Path("/tmp/worktrees")
     assert cfg.state_ids["QA"] == "s-qa"
     # optional fields default when not in yaml
-    assert cfg.session_timeout_seconds == 1800
+    assert cfg.session_timeout_seconds == 3600
     assert cfg.max_turns == 200
     assert cfg.max_turn_retries == 4
     assert cfg.usage_limit_cooldown_seconds == 900

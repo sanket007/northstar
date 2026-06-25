@@ -329,6 +329,24 @@ def test_error_during_execution_on_resume_heals_and_retries(tmp_path):
     assert own.owns("i1") is False
 
 
+def test_session_timeout_on_create_is_transient_and_stores_session_for_resume(tmp_path):
+    cfg = make_cfg(tmp_path, max_turn_retries=2)
+    own = Ownership(); own.claim("i1")
+    fake_plane = FakePlane()
+
+    def fake_run(cfg, role, ticket_id, worktree, **k):
+        # timed-out session: captured its id from the partial stream, no ok result
+        return SessionResult(ok=False, error="session timeout", session_id="sid-partial")
+
+    dispatch = make_dispatch(cfg, own, run=fake_run, mk_worktree=_mk,
+                             rm_worktree=lambda r, w: None, plane=fake_plane)
+    dispatch(Issue("i1", "a", "", "s-ready", 7), "builder")
+    assert fake_plane.states == []                                       # NOT blocked (transient)
+    assert (cfg.worktrees_root / ".sessions" / "i1").read_text() == "sid-partial"  # resumable next
+    assert any("retrying after a recoverable session issue" in b.lower()
+               for _, b in fake_plane.comments)
+
+
 def test_error_during_execution_blocks_after_retries_exhausted(tmp_path):
     cfg = make_cfg(tmp_path, max_turn_retries=1)
     own = Ownership(); own.claim("i1")

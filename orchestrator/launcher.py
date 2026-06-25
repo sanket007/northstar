@@ -241,8 +241,14 @@ def run_session(cfg: Config, role: str, ticket_id: str, worktree: Path,
             pass
         pump.join(timeout=2)
         dur = time.monotonic() - started
+        # parse what streamed before the kill to recover the session id (from the init event) +
+        # partial context size, so a persistent session can RESUME after a timeout instead of
+        # being lost and recreated.
+        partial = parse_stream_json(lines)
         obs.info("claude", f"{role} session for {ticket_id} timed out ({dur:.0f}s)")
-        return SessionResult(ok=False, error="session timeout", model=model, duration_seconds=dur)
+        return SessionResult(ok=False, error="session timeout", model=model, duration_seconds=dur,
+                             session_id=partial.session_id,
+                             initial_input_tokens=partial.initial_input_tokens)
     pump.join(timeout=5)
     result = parse_stream_json(lines)
     dur = time.monotonic() - started
