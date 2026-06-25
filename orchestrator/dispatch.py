@@ -24,20 +24,31 @@ def _strip_html(html) -> str:
     return re.sub("<[^>]+>", "", html or "").strip()
 
 
-# --- persistent per-ticket session markers (so later stages resume, not recreate) ---
+# --- persistent per-ticket session store: file holds the claude-assigned session id so later
+# stages --resume that exact conversation. We never force an id (forcing collides on re-dispatch). ---
 def _session_marker(cfg: Config, ticket_id: str):
     return cfg.worktrees_root / ".sessions" / ticket_id
 
 
-def _session_exists(cfg: Config, ticket_id: str) -> bool:
-    return _session_marker(cfg, ticket_id).exists()
+def _read_session_id(cfg: Config, ticket_id: str) -> str:
+    try:
+        return _session_marker(cfg, ticket_id).read_text().strip()
+    except Exception:
+        return ""
 
 
-def _mark_session(cfg: Config, ticket_id: str) -> None:
+def _write_session_id(cfg: Config, ticket_id: str, session_id: str) -> None:
     try:
         m = _session_marker(cfg, ticket_id)
         m.parent.mkdir(parents=True, exist_ok=True)
-        m.touch()
+        m.write_text(session_id)
+    except Exception:
+        pass
+
+
+def _clear_session(cfg: Config, ticket_id: str) -> None:
+    try:
+        _session_marker(cfg, ticket_id).unlink()
     except Exception:
         pass
 
@@ -128,7 +139,8 @@ def make_dispatch(cfg: Config, ownership: Ownership, *, run=run_session,
         # Builder + QA share one persistent session per ticket (context retained across stages);
         # resume it once it exists. Reviewer is always a fresh, independent session.
         persistent = role in PERSISTENT_ROLES
-        resume = persistent and _session_exists(cfg, issue.id)
+        stored_sid = _read_session_id(cfg, issue.id) if persistent else ""
+        resume = bool(stored_sid)
         instruction = _phase_instruction(role, comments) if resume else ""
         worktree = None
         failure = None
@@ -139,9 +151,15 @@ def make_dispatch(cfg: Config, ownership: Ownership, *, run=run_session,
             # whole point); a fresh session (create / reviewer) gets the pre-fetched ticket context.
             ctx = "" if resume else ticket_context(cfg, issue, comments)
             result = run(cfg, role, issue.id, worktree, context=ctx,
-                         resume=resume, instruction=instruction)
-            if persistent and not resume:
-                _mark_session(cfg, issue.id)  # created now -> later stages resume this conversation
+                         resume=resume, instruction=instruction, session_id=stored_sid)
+            if persistent:
+                if not resume and result is not None and result.session_id:
+                    # first run: remember the id claude assigned so later stages resume it
+                    _write_session_id(cfg, issue.id, result.session_id)
+                elif resume and (result is None or (not result.ok and not result.session_id)):
+                    # resume produced no session at all (broken/missing conversation) -> drop the
+                    # marker so the next dispatch starts a clean session instead of looping.
+                    _clear_session(cfg, issue.id)
             if result is None or not result.ok:
                 failure = (result.error if result is not None
                            else "session returned no result")

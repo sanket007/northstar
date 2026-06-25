@@ -201,26 +201,42 @@ def test_usage_limit_pauses_daemon_not_blocks(tmp_path):
     usage_limit_hit.clear()
 
 
-def _mark(cfg, ticket_id):
+def _mark(cfg, ticket_id, sid="sid-existing"):
     d = cfg.worktrees_root / ".sessions"
     d.mkdir(parents=True, exist_ok=True)
-    (d / ticket_id).touch()
+    (d / ticket_id).write_text(sid)
 
 
-def test_builder_create_writes_session_marker(tmp_path):
+def test_builder_create_stores_assigned_session_id(tmp_path):
     cfg = make_cfg(tmp_path)
     own = Ownership(); own.claim("i1")
     seen = {}
 
     def fake_run(cfg, role, ticket_id, worktree, **k):
         seen.update(k)
-        return SessionResult(ok=True)
+        return SessionResult(ok=True, session_id="sid-new")
 
     dispatch = make_dispatch(cfg, own, run=fake_run, mk_worktree=_mk,
                              rm_worktree=lambda r, w: None, plane=FakePlane())
     dispatch(Issue("i1", "a", "", "s-ready", 7), "builder")
-    assert seen["resume"] is False                      # first run -> create
-    assert (cfg.worktrees_root / ".sessions" / "i1").exists()  # marker so next stage resumes
+    assert seen["resume"] is False                                      # first run -> create
+    assert seen["session_id"] == ""                                     # nothing forced on create
+    marker = cfg.worktrees_root / ".sessions" / "i1"
+    assert marker.read_text() == "sid-new"                             # captured id stored for resume
+
+
+def test_broken_resume_clears_marker_for_clean_restart(tmp_path):
+    cfg = make_cfg(tmp_path)
+    own = Ownership(); own.claim("i1")
+    _mark(cfg, "i1", "sid-old")
+
+    def fake_run(cfg, role, ticket_id, worktree, **k):
+        return SessionResult(ok=False, error="session ended with no result event", session_id=None)
+
+    dispatch = make_dispatch(cfg, own, run=fake_run, mk_worktree=_mk,
+                             rm_worktree=lambda r, w: None, plane=FakePlane())
+    dispatch(Issue("i1", "a", "", "s-inprog", 7), "builder")
+    assert not (cfg.worktrees_root / ".sessions" / "i1").exists()       # marker dropped -> next is fresh
 
 
 def test_builder_rework_resumes_persistent_session_with_feedback(tmp_path):
