@@ -66,9 +66,9 @@ def test_dispatch_runs_session_then_cleans_up_and_releases(tmp_path):
                              plane=fake_plane)
     dispatch(Issue("i1", "a", "", "s-ready", 7), "builder")
 
-    assert ("mk", "7-builder", "main") in events  # worktree cut from the configured base branch
+    assert ("mk", "7-agent", "main") in events  # persistent role -> shared per-ticket worktree path
     assert ("run", "builder", "i1") in events
-    assert ("rm", "7-builder") in events
+    assert ("rm", "7-agent") in events
     assert own.owns("i1") is False
     # On success, no Blocked comment or state change
     assert fake_plane.comments == []
@@ -256,6 +256,27 @@ def test_builder_rework_resumes_persistent_session_with_feedback(tmp_path):
     assert seen["resume"] is True
     assert seen["context"] == ""                         # not re-injected on resume
     assert "fix the thing" in seen["instruction"]        # latest feedback carried into the session
+
+
+def test_persistent_roles_share_one_worktree_path(tmp_path):
+    # builder + QA of the same ticket must use the SAME worktree path so a resume runs in the
+    # cwd the session was created in; reviewer gets its own.
+    cfg = make_cfg(tmp_path)
+    own = Ownership()
+
+    for role, expect in (("builder", "9-agent"), ("qa", "9-agent"), ("reviewer", "9-reviewer")):
+        own.claim("i9")
+        seen = {}
+
+        def mk(repo_dir, roots, slug, base_branch="main"):
+            seen["slug"] = slug
+            return roots / slug
+
+        d = make_dispatch(cfg, own, run=lambda c, r, t, w, **k: SessionResult(ok=True, session_id="s"),
+                          mk_worktree=mk, rm_worktree=lambda r, w: None,
+                          verify=lambda c: (True, "ok"), plane=FakePlane())
+        d(Issue("i9", "a", "", "s-ready", 9), role)
+        assert seen["slug"] == expect
 
 
 def test_error_during_execution_on_resume_heals_and_retries(tmp_path):

@@ -140,10 +140,13 @@ def make_dispatch(cfg: Config, ownership: Ownership, *, run=run_session,
             ownership.release(issue.id)
             return
 
-        slug = f"{issue.sequence_id}-{role}"
         # Builder + QA share one persistent session per ticket (context retained across stages);
         # resume it once it exists. Reviewer is always a fresh, independent session.
         persistent = role in PERSISTENT_ROLES
+        # Persistent roles share ONE worktree PATH per ticket so a resumed session runs in the
+        # SAME working directory it was created in — resuming in a different cwd triggers
+        # error_during_execution. Reviewer gets its own (it's independent and short-lived).
+        slug = f"{issue.sequence_id}-agent" if persistent else f"{issue.sequence_id}-{role}"
         stored_sid = _read_session_id(cfg, issue.id) if persistent else ""
         resume = bool(stored_sid)
         instruction = _phase_instruction(role, comments) if resume else ""
