@@ -12,13 +12,15 @@ before any task.
   (what changed, why, ticket id, PR link). The commit hook blocks a commit with no `docs/` file
   staged, so include the entry with your work — don't pad it onto every WIP commit.
 
-## Context hydration (every session — be economical)
-Each session is fresh and stateless, so reconstruct context before acting — but read the minimum that
-makes you correct. Start from the **latest** comment plus anything **since your last state move**, and
-the ticket's acceptance criteria. Pull in the GitHub PR thread, the repo `docs/` memory, and
-git history only when you actually need them (e.g. read the PR thread on a rework). The comment trail is
-the source of truth for *what to do next*; the rest is for *how*. Don't re-read the whole history when
-the latest comment already tells you what to do.
+## Context hydration (be economical)
+Builder and QA run as **one persistent session per ticket** — your context carries across stages, so on
+a resume you already know this ticket; do NOT re-hydrate, just act on the short instruction you're given
+(and the latest comment if it's included). The reviewer is a **fresh, independent** session and should
+reconstruct context from the latest comment, the acceptance criteria, and the PR.
+Either way read the minimum that makes you correct: the comment trail is the source of truth for *what
+to do next*, the PR thread / `docs/` memory / git history are for *how* — pull them only when needed
+(e.g. the PR thread on a rework). Never re-read the whole history when the latest comment already says
+what to do, and never re-fetch via Plane MCP what's already in your context.
 
 ## Safety (you run with permissions bypassed)
 These prompts are the only guardrail: never commit or exfiltrate secrets; never weaken, skip, or delete

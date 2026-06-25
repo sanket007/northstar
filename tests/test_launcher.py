@@ -20,7 +20,8 @@ def test_build_command_drops_worktree_and_trims_prompt(tmp_path):
     from orchestrator.launcher import build_claude_command
     cfg = make_cfg(tmp_path)
     cmd = build_claude_command(cfg, "builder", "i1", "ROLE TEXT")  # no worktree arg
-    assert "ROLE TEXT" in cmd and "stream-json" in cmd and "--dangerously-skip-permissions" in cmd
+    assert "ROLE TEXT" in cmd[cmd.index("--append-system-prompt") + 1]
+    assert "stream-json" in cmd and "--dangerously-skip-permissions" in cmd
     assert "--strict-mcp-config" in cmd  # only the Plane server, no personal-MCP contention
     p = cmd[cmd.index("-p") + 1]
     assert "i1" in p and "builder" in p
@@ -42,6 +43,48 @@ def test_per_role_model_override_and_context(tmp_path):
 def test_role_doc_path(tmp_path):
     cfg = make_cfg(tmp_path)
     assert role_doc_path(cfg, "qa") == cfg.templates_dir / "qa.md"
+
+
+def test_persistent_roles_exclude_reviewer():
+    from orchestrator.launcher import PERSISTENT_ROLES
+    assert "builder" in PERSISTENT_ROLES and "qa" in PERSISTENT_ROLES
+    assert "reviewer" not in PERSISTENT_ROLES  # review stays independent
+
+
+def test_ticket_session_id_is_deterministic():
+    from orchestrator.launcher import ticket_session_id
+    assert ticket_session_id("tkt1") == ticket_session_id("tkt1")
+    assert ticket_session_id("tkt1") != ticket_session_id("tkt2")
+
+
+def test_persistent_create_pins_session_id_and_injects_caveman(tmp_path):
+    from orchestrator.launcher import build_claude_command, ticket_session_id
+    cfg = make_cfg(tmp_path)
+    cmd = build_claude_command(cfg, "builder", "tkt1", "ROLE DOC", "CTX-BLOCK")
+    assert cmd[cmd.index("--session-id") + 1] == ticket_session_id("tkt1")
+    sysp = cmd[cmd.index("--append-system-prompt") + 1]
+    assert "ROLE DOC" in sysp and "caveman ultra" in sysp.lower()
+    assert "CTX-BLOCK" in cmd[cmd.index("-p") + 1]
+    assert "--resume" not in cmd
+
+
+def test_persistent_resume_sends_instruction_only(tmp_path):
+    from orchestrator.launcher import build_claude_command, ticket_session_id
+    cfg = make_cfg(tmp_path)
+    cmd = build_claude_command(cfg, "qa", "tkt1", "ROLE DOC", "CTX-BLOCK",
+                               resume=True, instruction="DO QA NOW")
+    assert cmd[cmd.index("--resume") + 1] == ticket_session_id("tkt1")
+    assert cmd[cmd.index("-p") + 1] == "DO QA NOW"
+    assert "--append-system-prompt" not in cmd      # retained from creation
+    assert "--session-id" not in cmd
+    assert "CTX-BLOCK" not in " ".join(cmd)          # context not re-injected on resume
+
+
+def test_reviewer_is_fresh_session(tmp_path):
+    from orchestrator.launcher import build_claude_command
+    cfg = make_cfg(tmp_path)
+    cmd = build_claude_command(cfg, "reviewer", "tkt1", "ROLE DOC", "CTX")
+    assert "--session-id" not in cmd and "--resume" not in cmd  # independent, not persistent
 
 
 def test_parse_stream_json_success():

@@ -30,10 +30,14 @@ Append a short, cited entry to a `docs/` markdown file: what changed and why, wi
 
 **Commit and push at every green checkpoint, not just at the end.** A large ticket may exceed one session's turn budget; if it does, the orchestrator restarts you in a fresh session. Only work you've **committed and pushed to your branch** survives that restart — anything uncommitted is lost and re-done from scratch. So whenever a coherent slice is green (tests pass), commit it (re-stage/extend the `docs/` entry to satisfy the gate) and `git push` immediately. Keep slices small enough that you always have a recent pushed checkpoint.
 
-## Step 6 — Verify, push, open PR
+## Step 6 — Verify, push, open PR (mergeable is a hard gate)
 - Use `superpowers:verification-before-completion`: actually run the tests and show they pass.
-- If `origin/main` has advanced while you worked, rebase your branch onto it and re-run tests so the PR is current with trunk.
-- Push the branch and open a PR with `superpowers:requesting-code-review`. Map each change to the acceptance criteria it satisfies, and include the ticket id.
+- **Make the PR mergeable before you hand it off.** Fetch trunk and rebase your branch onto
+  `origin/<base>`, resolve **every** conflict, and re-run lint/build/test. A PR that is conflicting or
+  behind trunk must **never** move to Review or QA — resolve it now, not later. If sibling work merged
+  files you also created (e.g. a shared entity/module), adopt the merged version and drop your duplicate.
+- Push the branch and open a PR with `superpowers:requesting-code-review`. Map each change to the
+  acceptance criteria it satisfies, include the ticket id, and confirm `gh pr view <n>` shows no conflicts.
 
 ## Step 7 — Hand off to Review
 Move the ticket to **Review** and comment in the standard format (header + `PR:` line + at most a
@@ -50,7 +54,18 @@ PR: <url>
 - Never force-push, never commit directly to the base branch, never rewrite published history.
 - Stay within this repo and the ticket's scope; no destructive or unrelated changes.
 
+## Persistent session — you may be resumed for later phases
+This same session is reused across the ticket's lifecycle, so your context carries over:
+- **Rework** — after the independent reviewer requests changes, you'll be resumed with their feedback;
+  address it, keep the PR mergeable, and move back to Review.
+- **QA phase** — after the PR passes **independent** review, you may be resumed with an explicit QA
+  instruction: verify each acceptance criterion from the outside, confirm CI is green and the branch is
+  current with trunk, then **safely merge** and move to Completed. Only merge when given that QA
+  instruction — never during the build or rework cycle.
+
 ## Rules
 - Comments are append-only and self-contained (always include links/refs/decisions).
-- Never merge. Never move past Review.
-- If you cannot finish (crash/limit), leave a comment explaining where you stopped.
+- Do not merge during build or rework, and do not move a ticket past Review in that cycle. Merge only
+  when explicitly resumed for the QA phase (after independent review).
+- If you cannot finish (crash/limit), leave a comment explaining where you stopped — your session is
+  retained, so a continuation picks up exactly where you left off.
