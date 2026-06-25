@@ -32,6 +32,12 @@ class SessionResult:
     ok: bool
     error: str | None = None
     session_id: str | None = None  # the id claude assigned (captured from the init event)
+    # token telemetry (captured from stream-json):
+    initial_input_tokens: int = 0   # context size at the first turn (system+tools+prompt) ~= startup load
+    total_input_tokens: int = 0     # cumulative input across the run (incl cache reads)
+    output_tokens: int = 0
+    num_turns: int = 0
+    cost_usd: float = 0.0
 
 
 def role_doc_path(cfg: Config, role: str) -> Path:
@@ -99,10 +105,18 @@ def _is_usage_limit(text: str) -> bool:
     return any(p in t for p in _LIMIT_PHRASES)
 
 
+def _usage_total(u: dict) -> int:
+    """All input tokens a turn actually saw = fresh + cache-creation + cache-read."""
+    return int((u.get("input_tokens") or 0) + (u.get("cache_creation_input_tokens") or 0)
+               + (u.get("cache_read_input_tokens") or 0))
+
+
 def parse_stream_json(lines: Iterable[str]) -> SessionResult:
     saw_result = False
     limit_hit = False
     sid: str | None = None
+    initial = 0          # context seen by the FIRST turn ~= startup load
+    tele = {}            # telemetry to stamp onto the returned SessionResult
     for line in lines:
         line = line.strip()
         if not line:
@@ -115,23 +129,32 @@ def parse_stream_json(lines: Iterable[str]) -> SessionResult:
         # capture it so the orchestrator can --resume this exact conversation later.
         sid = obj.get("session_id") or sid
         if obj.get("type") == "assistant":
-            for b in obj.get("message", {}).get("content", []):
+            msg = obj.get("message", {})
+            if not initial and isinstance(msg.get("usage"), dict):
+                initial = _usage_total(msg["usage"])  # first turn's input ~= initial context
+            for b in msg.get("content", []):
                 if b.get("type") == "text" and _is_usage_limit(b.get("text", "")):
                     limit_hit = True
         if obj.get("type") == "result":
             saw_result = True
+            u = obj.get("usage") if isinstance(obj.get("usage"), dict) else {}
+            tele = dict(initial_input_tokens=initial, total_input_tokens=_usage_total(u),
+                        output_tokens=int(u.get("output_tokens") or 0),
+                        num_turns=int(obj.get("num_turns") or 0),
+                        cost_usd=float(obj.get("total_cost_usd") or 0.0))
             # Claude prints the usage-limit notice then exits result=success having done nothing —
             # surface it as its own error so the daemon pauses instead of looping into the wall.
             if limit_hit:
-                return SessionResult(ok=False, error="usage_limit", session_id=sid)
+                return SessionResult(ok=False, error="usage_limit", session_id=sid, **tele)
             if obj.get("is_error"):
-                return SessionResult(ok=False, error=obj.get("subtype", "error"), session_id=sid)
-            return SessionResult(ok=True, error=None, session_id=sid)
+                return SessionResult(ok=False, error=obj.get("subtype", "error"), session_id=sid, **tele)
+            return SessionResult(ok=True, error=None, session_id=sid, **tele)
+    tele = dict(initial_input_tokens=initial)
     if limit_hit:
-        return SessionResult(ok=False, error="usage_limit", session_id=sid)
+        return SessionResult(ok=False, error="usage_limit", session_id=sid, **tele)
     if not saw_result:
-        return SessionResult(ok=False, error="session ended with no result event", session_id=sid)
-    return SessionResult(ok=False, error="unknown", session_id=sid)
+        return SessionResult(ok=False, error="session ended with no result event", session_id=sid, **tele)
+    return SessionResult(ok=False, error="unknown", session_id=sid, **tele)
 
 
 def claude_event_line(raw: str) -> str | None:
@@ -208,6 +231,13 @@ def run_session(cfg: Config, role: str, ticket_id: str, worktree: Path,
     pump.join(timeout=5)
     result = parse_stream_json(lines)
     dur = time.monotonic() - started
+    # token telemetry: initial context (startup load) + run totals, per session
+    if result.initial_input_tokens or result.total_input_tokens:
+        obs.info("claude",
+                 f"{role}/{ticket_id[:8]} tokens: initial-context ~{result.initial_input_tokens//1000}k "
+                 f"({result.initial_input_tokens}) | run in {result.total_input_tokens} "
+                 f"out {result.output_tokens} | turns {result.num_turns} | ${result.cost_usd:.3f}"
+                 f"{' | RESUMED' if resume else ''}")
     if proc.returncode not in (0, None) and result.ok:
         obs.info("claude", f"{role} session for {ticket_id} exited {proc.returncode} ({dur:.0f}s)")
         return SessionResult(ok=False, error=f"claude exited {proc.returncode}")

@@ -95,6 +95,25 @@ def test_parse_stream_json_captures_session_id():
     assert res.ok is True and res.session_id == "abc-123"
 
 
+def test_parse_stream_json_captures_token_telemetry():
+    from orchestrator.launcher import parse_stream_json
+    lines = [
+        '{"type":"system","subtype":"init","session_id":"s1"}',
+        # first turn: initial context = input + cache_read + cache_creation
+        '{"type":"assistant","message":{"usage":{"input_tokens":1000,'
+        '"cache_read_input_tokens":18000,"cache_creation_input_tokens":1000}}}',
+        '{"type":"assistant","message":{"usage":{"input_tokens":500}}}',  # later turn ignored for initial
+        '{"type":"result","subtype":"success","is_error":false,"num_turns":7,'
+        '"total_cost_usd":0.42,"usage":{"input_tokens":2000,"cache_read_input_tokens":40000,'
+        '"output_tokens":3000}}',
+    ]
+    res = parse_stream_json(lines)
+    assert res.initial_input_tokens == 20000      # 1000+18000+1000, from the FIRST turn
+    assert res.total_input_tokens == 42000        # 2000+40000 from the result usage
+    assert res.output_tokens == 3000
+    assert res.num_turns == 7 and abs(res.cost_usd - 0.42) < 1e-9
+
+
 def test_reviewer_is_fresh_session(tmp_path):
     from orchestrator.launcher import build_claude_command
     cfg = make_cfg(tmp_path)
