@@ -147,7 +147,15 @@ def parse_stream_json(lines: Iterable[str]) -> SessionResult:
             if limit_hit:
                 return SessionResult(ok=False, error="usage_limit", session_id=sid, **tele)
             if obj.get("is_error"):
-                return SessionResult(ok=False, error=obj.get("subtype", "error"), session_id=sid, **tele)
+                # keep the subtype as a stable prefix (callers substring-match it) and append
+                # whatever human-readable cause claude provided, so blocks/logs aren't opaque.
+                sub = obj.get("subtype", "error")
+                detail = obj.get("result") or obj.get("error") or ""
+                if isinstance(detail, dict):
+                    detail = detail.get("message") or detail.get("error") or ""
+                detail = " ".join(str(detail).split())[:300]
+                err = f"{sub}: {detail}" if detail and detail != sub else sub
+                return SessionResult(ok=False, error=err, session_id=sid, **tele)
             return SessionResult(ok=True, error=None, session_id=sid, **tele)
     tele = dict(initial_input_tokens=initial)
     if limit_hit:

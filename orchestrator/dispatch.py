@@ -11,13 +11,18 @@ from orchestrator.worktree import create_worktree, remove_worktree
 from orchestrator.launcher import run_session, PERSISTENT_ROLES
 from orchestrator.health import verify_main
 
-# marker for orchestrator-posted continuation notes after a session hit max_turns
+# markers for orchestrator-posted auto-retry notes; both count toward the retry budget
 _CONTINUE_MARKER = "continuing after reaching the turn limit"
+_RETRY_MARKER = "retrying after a recoverable session issue"
+
+# failure substrings the daemon retries (bounded) instead of blocking on — usually transient
+_TRANSIENT = ("max_turns", "error_during_execution")
 
 
-def _continuations(comments) -> int:
+def _auto_retries(comments) -> int:
     return sum(1 for c in comments
-               if _CONTINUE_MARKER in (getattr(c, "body_html", "") or "").lower())
+               if any(m in (getattr(c, "body_html", "") or "").lower()
+                      for m in (_CONTINUE_MARKER, _RETRY_MARKER)))
 
 
 def _strip_html(html) -> str:
@@ -144,6 +149,7 @@ def make_dispatch(cfg: Config, ownership: Ownership, *, run=run_session,
         instruction = _phase_instruction(role, comments) if resume else ""
         worktree = None
         failure = None
+        cleared = False  # set when a broken resume's marker is dropped -> retry as a fresh session
         try:
             with wt_lock:
                 worktree = mk_worktree(cfg.repo_dir, cfg.worktrees_root, slug, cfg.base_branch)
@@ -156,10 +162,14 @@ def make_dispatch(cfg: Config, ownership: Ownership, *, run=run_session,
                 if not resume and result is not None and result.session_id:
                     # first run: remember the id claude assigned so later stages resume it
                     _write_session_id(cfg, issue.id, result.session_id)
-                elif resume and (result is None or (not result.ok and not result.session_id)):
-                    # resume produced no session at all (broken/missing conversation) -> drop the
-                    # marker so the next dispatch starts a clean session instead of looping.
+                elif resume and (result is None or (not result.ok and (
+                        not result.session_id
+                        or "error_during_execution" in (result.error or "")))):
+                    # Resume yielded no usable session (none at all, or an internal execution
+                    # error) -> drop the marker so the retry starts a clean session. A max_turns
+                    # resume is intentionally NOT cleared: that session has progress to continue.
                     _clear_session(cfg, issue.id)
+                    cleared = True
             if result is None or not result.ok:
                 failure = (result.error if result is not None
                            else "session returned no result")
@@ -179,19 +189,27 @@ def make_dispatch(cfg: Config, ownership: Ownership, *, run=run_session,
                                          "(switch model or wait for reset)")
                 usage_limit_hit.set()
             elif failure is not None:
-                # A session that ran out of turns usually made progress — let it continue
-                # in a fresh session (bounded), instead of blocking, since the next poll
-                # re-picks the ticket up from its current state.
-                if "max_turns" in failure and _continuations(comments) < cfg.max_turn_retries:
+                # Transient failures (ran out of turns; a recoverable claude error_during_execution)
+                # usually aren't fatal — retry, bounded, instead of blocking. The next poll re-picks
+                # the ticket up from its current state; a broken resume was already cleared above so
+                # the retry starts a fresh session.
+                transient = cleared or any(t in failure for t in _TRANSIENT)
+                if transient and _auto_retries(comments) < cfg.max_turn_retries:
+                    if "max_turns" in failure:
+                        msg = (f"**[orchestrator] continuing after reaching the turn limit** — the "
+                               f"{role} session hit max_turns ({cfg.max_turns}) with progress made; "
+                               "re-queuing to continue where it left off.")
+                    else:
+                        msg = (f"**[orchestrator] retrying after a recoverable session issue** — the "
+                               f"{role} session ended with `{failure}`; re-queuing"
+                               + (" with a fresh session." if resume else "."))
                     try:
-                        plane.add_comment(
-                            issue.id,
-                            f"**[orchestrator] continuing after reaching the turn limit** — the "
-                            f"{role} session hit max_turns ({cfg.max_turns}) with progress made; "
-                            "re-queuing to continue where it left off.")
+                        plane.add_comment(issue.id, msg)
                     except Exception:
                         pass
-                    obs.info("orchestrator", f"{issue.id}: max_turns — re-queuing to continue")
+                    obs.info("orchestrator",
+                             f"{issue.id}: {failure} — re-queuing "
+                             f"({_auto_retries(comments) + 1}/{cfg.max_turn_retries})")
                 else:
                     _block(issue.id, failure)
             elif role == "qa":
